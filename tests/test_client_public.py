@@ -111,6 +111,43 @@ def test_get_meta_data():
     assert out.is_sign_up_enabled is True
 
 
+@respx.mock
+def test_magic_link_login_does_not_mutate_request_and_defaults_redirect():
+    route = respx.post("https://auth.example.com/graphql").mock(
+        return_value=Response(200, json={"data": {"magic_link_login": {"message": "sent"}}})
+    )
+    client = AuthorizerClient("cid", "https://auth.example.com", redirect_url="https://app.example.com")
+    req = t.MagicLinkLoginRequest(email="a@b.com")
+    client.magic_link_login(req)
+    client.close()
+    # caller's object is untouched
+    assert req.redirect_uri is None
+    # but the sent payload carries the configured default
+    import json
+    sent = json.loads(route.calls[0].request.content)
+    assert sent["variables"]["data"]["redirect_uri"] == "https://app.example.com"
+
+
+@respx.mock
+def test_forgot_password_does_not_mutate_request():
+    respx.post("https://auth.example.com/graphql").mock(
+        return_value=Response(
+            200,
+            json={
+                "data": {
+                    "forgot_password": {"message": "ok", "should_show_mobile_otp_screen": False}
+                }
+            },
+        )
+    )
+    client = AuthorizerClient("cid", "https://auth.example.com", redirect_url="https://app.example.com")
+    req = t.ForgotPasswordRequest(email="a@b.com")
+    client.forgot_password(req)
+    client.close()
+    # caller's object must not be mutated
+    assert req.redirect_uri is None
+
+
 def test_network_error_raises_connection_error():
     with respx.mock:
         respx.post("https://auth.example.com/graphql").mock(side_effect=ConnectError("boom"))

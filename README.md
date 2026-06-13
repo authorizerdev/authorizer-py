@@ -63,8 +63,9 @@ with AuthorizerClient(
     authorizer_url="https://your-instance.authorizer.dev",
 ) as client:
     token = client.login(LoginRequest(email="user@example.com", password="Abc@123"))
-    print(token.access_token)
-    print(token.user.email)
+    if token.user:
+        print("Logged in as:", token.user.email)
+    print("access_token:", token.access_token)
 ```
 
 > **Note (Authorizer >= v2.3.0):** the server's CSRF guard requires an `Origin`

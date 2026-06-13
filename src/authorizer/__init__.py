@@ -83,4 +83,5 @@ __all__ = [
     "ValidateSessionResponse",
     "VerifyEmailRequest",
     "VerifyOTPRequest",
+    "__version__",
 ]

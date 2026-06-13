@@ -98,9 +98,10 @@ class AsyncAuthorizerClient:
         return t.AuthToken.from_dict(res or {})
 
     async def magic_link_login(self, req: t.MagicLinkLoginRequest) -> t.GenericResponse:
-        if not req.redirect_uri:
-            req.redirect_uri = self._config.redirect_url or None
-        res = await self._graphql(q.MAGIC_LINK_LOGIN, "magic_link_login", {"data": req.to_dict()})
+        payload = req.to_dict()
+        if not payload.get("redirect_uri") and self._config.redirect_url:
+            payload["redirect_uri"] = self._config.redirect_url
+        res = await self._graphql(q.MAGIC_LINK_LOGIN, "magic_link_login", {"data": payload})
         return t.GenericResponse.from_dict(res or {})
 
     async def verify_otp(self, req: t.VerifyOTPRequest) -> t.AuthToken:
@@ -122,9 +123,10 @@ class AsyncAuthorizerClient:
         return t.GenericResponse.from_dict(res or {})
 
     async def forgot_password(self, req: t.ForgotPasswordRequest) -> t.ForgotPasswordResponse:
-        if not req.redirect_uri:
-            req.redirect_uri = self._config.redirect_url or None
-        res = await self._graphql(q.FORGOT_PASSWORD, "forgot_password", {"data": req.to_dict()})
+        payload = req.to_dict()
+        if not payload.get("redirect_uri") and self._config.redirect_url:
+            payload["redirect_uri"] = self._config.redirect_url
+        res = await self._graphql(q.FORGOT_PASSWORD, "forgot_password", {"data": payload})
         return t.ForgotPasswordResponse.from_dict(res or {})
 
     async def reset_password(self, req: t.ResetPasswordRequest) -> t.GenericResponse:
