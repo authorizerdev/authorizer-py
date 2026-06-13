@@ -87,7 +87,55 @@ class AuthorizerClient:
         res = self._send(spec)
         return parse_oauth_response(res.status_code, res.content)
 
-    # -- temporary convenience (removed in Task 8) ------------------------ #
-    def login_from(self, email: str, password: str) -> t.AuthToken:
-        res = self._graphql(q.LOGIN, "login", {"data": {"email": email, "password": password}})
+    # -- public auth flows ----------------------------------------------- #
+    def login(self, req: t.LoginRequest) -> t.AuthToken:
+        res = self._graphql(q.LOGIN, "login", {"data": req.to_dict()})
         return t.AuthToken.from_dict(res or {})
+
+    def signup(self, req: t.SignUpRequest) -> t.AuthToken:
+        res = self._graphql(q.SIGNUP, "signup", {"data": req.to_dict()})
+        return t.AuthToken.from_dict(res or {})
+
+    def magic_link_login(self, req: t.MagicLinkLoginRequest) -> t.GenericResponse:
+        if not req.redirect_uri:
+            req.redirect_uri = self._config.redirect_url or None
+        res = self._graphql(q.MAGIC_LINK_LOGIN, "magic_link_login", {"data": req.to_dict()})
+        return t.GenericResponse.from_dict(res or {})
+
+    def verify_otp(self, req: t.VerifyOTPRequest) -> t.AuthToken:
+        res = self._graphql(q.VERIFY_OTP, "verify_otp", {"data": req.to_dict()})
+        return t.AuthToken.from_dict(res or {})
+
+    def verify_email(self, req: t.VerifyEmailRequest) -> t.AuthToken:
+        res = self._graphql(q.VERIFY_EMAIL, "verify_email", {"data": req.to_dict()})
+        return t.AuthToken.from_dict(res or {})
+
+    def resend_otp(self, req: t.ResendOTPRequest) -> t.GenericResponse:
+        res = self._graphql(q.RESEND_OTP, "resend_otp", {"data": req.to_dict()})
+        return t.GenericResponse.from_dict(res or {})
+
+    def resend_verify_email(self, req: t.ResendVerifyEmailRequest) -> t.GenericResponse:
+        res = self._graphql(q.RESEND_VERIFY_EMAIL, "resend_verify_email", {"data": req.to_dict()})
+        return t.GenericResponse.from_dict(res or {})
+
+    def forgot_password(self, req: t.ForgotPasswordRequest) -> t.ForgotPasswordResponse:
+        if not req.redirect_uri:
+            req.redirect_uri = self._config.redirect_url or None
+        res = self._graphql(q.FORGOT_PASSWORD, "forgot_password", {"data": req.to_dict()})
+        return t.ForgotPasswordResponse.from_dict(res or {})
+
+    def reset_password(self, req: t.ResetPasswordRequest) -> t.GenericResponse:
+        res = self._graphql(q.RESET_PASSWORD, "reset_password", {"data": req.to_dict()})
+        return t.GenericResponse.from_dict(res or {})
+
+    def validate_jwt_token(self, req: t.ValidateJWTTokenRequest) -> t.ValidateJWTTokenResponse:
+        res = self._graphql(q.VALIDATE_JWT_TOKEN, "validate_jwt_token", {"data": req.to_dict()})
+        return t.ValidateJWTTokenResponse.from_dict(res or {})
+
+    def validate_session(self, req: t.ValidateSessionRequest) -> t.ValidateSessionResponse:
+        res = self._graphql(q.VALIDATE_SESSION, "validate_session", {"data": req.to_dict()})
+        return t.ValidateSessionResponse.from_dict(res or {})
+
+    def get_meta_data(self) -> t.MetaData:
+        res = self._graphql(q.META, "meta")
+        return t.MetaData.from_dict(res or {})
