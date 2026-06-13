@@ -56,3 +56,56 @@ def test_list_permissions_response_from_dict():
     assert resp.objects == ["document:1"]
     assert resp.permissions[0].relation == "can_view"
     assert resp.truncated is False
+
+
+# ---------------------------------------------------------------------------
+# Robustness / hardening tests (Fix 1–5, Fix 7)
+# ---------------------------------------------------------------------------
+
+def test_check_permissions_response_from_dict_none_results():
+    resp = t.CheckPermissionsResponse.from_dict({"results": None})
+    assert resp.results == []
+
+
+def test_check_permissions_response_from_dict_missing_results():
+    resp = t.CheckPermissionsResponse.from_dict({})
+    assert resp.results == []
+
+
+def test_list_permissions_response_from_dict_empty():
+    resp = t.ListPermissionsResponse.from_dict({})
+    assert resp.objects == []
+    assert resp.permissions == []
+    assert resp.truncated is False
+
+
+def test_validate_session_response_from_dict_none_user():
+    resp = t.ValidateSessionResponse.from_dict({"is_valid": True, "user": None})
+    assert resp.is_valid is True
+    assert resp.user is None
+
+
+def test_to_dict_three_level_nesting():
+    req = t.CheckPermissionsRequest(
+        checks=[
+            t.PermissionCheckInput(
+                relation="r",
+                object="o",
+                contextual_tuples=[t.FgaTupleInput(user="user:a", relation="r", object="o")],
+            )
+        ]
+    )
+    result = req.to_dict()
+    assert result == {
+        "checks": [
+            {
+                "relation": "r",
+                "object": "o",
+                "contextual_tuples": [{"user": "user:a", "relation": "r", "object": "o"}],
+            }
+        ]
+    }
+
+
+def test_resend_otp_request_to_dict_all_optional():
+    assert t.ResendOTPRequest().to_dict() == {}

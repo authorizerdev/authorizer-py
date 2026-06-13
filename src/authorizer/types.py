@@ -51,7 +51,7 @@ def _to_payload(value: Any) -> Any:
             out[f.name] = _to_payload(v)
         return out
     if isinstance(value, list):
-        return [_to_payload(v) for v in value]
+        return [_to_payload(v) for v in value if v is not None]
     if isinstance(value, dict):
         return {k: _to_payload(v) for k, v in value.items() if v is not None}
     return value
@@ -211,6 +211,7 @@ class RevokeTokenRequest(_Request):
     refresh_token: str
 
 
+# NOTE: `object` shadows the Python builtin intentionally to match the Authorizer API field name.
 @dataclass
 class FgaTupleInput(_Request):
     user: str
@@ -318,7 +319,11 @@ class ValidateJWTTokenResponse:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ValidateJWTTokenResponse:
-        return cls(**_known(cls, data))
+        claims = data.get("claims")
+        return cls(
+            is_valid=bool(data.get("is_valid", False)),
+            claims=claims if isinstance(claims, dict) else None,
+        )
 
 
 @dataclass
@@ -391,7 +396,9 @@ class CheckPermissionsResponse:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> CheckPermissionsResponse:
-        results = [PermissionCheckResult.from_dict(r) for r in data.get("results") or []]
+        raw = data.get("results")
+        items = raw if isinstance(raw, list) else []
+        results = [PermissionCheckResult.from_dict(r) for r in items if isinstance(r, dict)]
         return cls(results=results)
 
 
@@ -413,8 +420,11 @@ class ListPermissionsResponse:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ListPermissionsResponse:
+        raw_objects = data.get("objects")
+        raw_perms = data.get("permissions")
+        perms = raw_perms if isinstance(raw_perms, list) else []
         return cls(
-            objects=list(data.get("objects") or []),
-            permissions=[Permission.from_dict(p) for p in data.get("permissions") or []],
+            objects=list(raw_objects) if isinstance(raw_objects, list) else [],
+            permissions=[Permission.from_dict(p) for p in perms if isinstance(p, dict)],
             truncated=bool(data.get("truncated", False)),
         )
