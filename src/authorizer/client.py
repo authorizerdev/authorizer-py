@@ -15,6 +15,7 @@ from ._core import (
     build_graphql_request,
     build_headers,
     build_oauth_request,
+    parse_graphql_data,
     parse_graphql_response,
     parse_oauth_response,
 )
@@ -216,10 +217,4 @@ class AuthorizerClient:
             self._config.authorizer_url, query, variables, build_headers(self._config, headers)
         )
         res = self._send(spec)
-        if res.status_code >= 400:
-            parse_graphql_response(res.status_code, res.content, "")  # raises
-        import json as _json
-
-        decoded = _json.loads(res.content) if res.content else {}
-        data = decoded.get("data") if isinstance(decoded, dict) else None
-        return data if isinstance(data, dict) else {}
+        return parse_graphql_data(res.status_code, res.content)

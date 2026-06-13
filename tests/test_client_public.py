@@ -1,9 +1,11 @@
 # tests/test_client_public.py
+import pytest
 import respx
-from httpx import Response
+from httpx import ConnectError, Response
 
 from authorizer import types as t
 from authorizer.client import AuthorizerClient
+from authorizer.exceptions import AuthorizerConnectionError
 
 AUTH = {"data": {"login": {"access_token": "tok"}}}
 
@@ -107,3 +109,11 @@ def test_get_meta_data():
         out = c.get_meta_data()
     assert out.version == "1.0"
     assert out.is_sign_up_enabled is True
+
+
+def test_network_error_raises_connection_error():
+    with respx.mock:
+        respx.post("https://auth.example.com/graphql").mock(side_effect=ConnectError("boom"))
+        with _client() as c:
+            with pytest.raises(AuthorizerConnectionError):
+                c.login(t.LoginRequest(password="p", email="a@b.com"))

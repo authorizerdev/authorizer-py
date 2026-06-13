@@ -83,13 +83,8 @@ def _decode(body: bytes) -> Any:
         return None
 
 
-def parse_graphql_response(status: int, body: bytes, field_name: str) -> dict[str, Any] | None:
-    """Return ``data[field_name]`` or raise AuthorizerError.
-
-    Mirrors authorizer-go: a non-empty ``errors`` array is an API error; a
-    >=400 status with no ``errors`` array (CSRF 403, proxy page) is also an error.
-    """
-    decoded = _decode(body)
+def _raise_for_graphql_errors(status: int, decoded: Any, body: bytes) -> None:
+    """Raise AuthorizerError if *decoded* contains a GraphQL errors array or status >= 400."""
     if isinstance(decoded, dict):
         errors = decoded.get("errors")
         if errors:
@@ -108,11 +103,36 @@ def parse_graphql_response(status: int, body: bytes, field_name: str) -> dict[st
     if status >= 400:
         text = body.decode("utf-8", "replace") if body else ""
         raise AuthorizerError(f"HTTP {status}: {text}".strip(), status=status)
+
+
+def parse_graphql_response(status: int, body: bytes, field_name: str) -> dict[str, Any] | None:
+    """Return ``data[field_name]`` or raise AuthorizerError.
+
+    Mirrors authorizer-go: a non-empty ``errors`` array is an API error; a
+    >=400 status with no ``errors`` array (CSRF 403, proxy page) is also an error.
+    """
+    decoded = _decode(body)
+    _raise_for_graphql_errors(status, decoded, body)
     if isinstance(decoded, dict):
         data = decoded.get("data")
         if isinstance(data, dict):
             return data.get(field_name)
     return None
+
+
+def parse_graphql_data(status: int, body: bytes) -> dict[str, Any]:
+    """Return the whole GraphQL ``data`` object (or {}), raising on errors.
+
+    Behaves like :func:`parse_graphql_response` but returns the full ``data``
+    dict instead of a single named field.  Intended for :meth:`graphql_query`.
+    """
+    decoded = _decode(body)
+    _raise_for_graphql_errors(status, decoded, body)
+    if isinstance(decoded, dict):
+        data = decoded.get("data")
+        if isinstance(data, dict):
+            return data
+    return {}
 
 
 def parse_oauth_response(status: int, body: bytes) -> dict[str, Any]:

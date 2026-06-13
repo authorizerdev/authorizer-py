@@ -1,11 +1,13 @@
 # tests/test_client_authed.py
 import json
 
+import pytest
 import respx
 from httpx import Response
 
 from authorizer import types as t
 from authorizer.client import AuthorizerClient
+from authorizer.exceptions import AuthorizerError
 
 BEARER = {"Authorization": "Bearer tok"}
 
@@ -141,3 +143,23 @@ def test_graphql_query_escape_hatch():
     with _client() as c:
         out = c.graphql_query("query { profile { id } }", headers=BEARER)
     assert out == {"profile": {"id": "1"}}
+
+
+def test_graphql_query_raises_on_graphql_errors_2xx():
+    with respx.mock:
+        respx.post("https://auth.example.com/graphql").mock(
+            return_value=Response(200, json={"errors": [{"message": "nope"}]})
+        )
+        with _client() as c:
+            with pytest.raises(AuthorizerError, match="nope"):
+                c.graphql_query("query { profile { id } }")
+
+
+def test_typed_method_raises_on_graphql_errors():
+    with respx.mock:
+        respx.post("https://auth.example.com/graphql").mock(
+            return_value=Response(200, json={"errors": [{"message": "Unauthorized"}]})
+        )
+        with _client() as c:
+            with pytest.raises(AuthorizerError, match="Unauthorized"):
+                c.get_profile(headers={"Authorization": "Bearer t"})

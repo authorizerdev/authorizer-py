@@ -1,7 +1,7 @@
 # tests/test_core_parse.py
 import pytest
 
-from authorizer._core import parse_graphql_response, parse_oauth_response
+from authorizer._core import parse_graphql_data, parse_graphql_response, parse_oauth_response
 from authorizer.exceptions import AuthorizerError
 
 
@@ -57,3 +57,18 @@ def test_parse_graphql_forwards_string_errors_message():
 
 def test_parse_oauth_empty_body_returns_empty_dict():
     assert parse_oauth_response(200, b"") == {}
+
+
+def test_parse_graphql_data_returns_whole_data():
+    body = b'{"data": {"a": 1, "b": 2}}'
+    assert parse_graphql_data(200, body) == {"a": 1, "b": 2}
+
+
+def test_parse_graphql_data_raises_on_errors_array_with_200():
+    body = b'{"errors": [{"message": "Unauthorized"}], "data": null}'
+    with pytest.raises(AuthorizerError, match="Unauthorized"):
+        parse_graphql_data(200, body)
+
+
+def test_parse_graphql_data_returns_empty_when_data_missing():
+    assert parse_graphql_data(200, b'{"data": null}') == {}

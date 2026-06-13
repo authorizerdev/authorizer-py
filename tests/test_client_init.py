@@ -22,3 +22,4 @@ def test_trims_trailing_slash():
 def test_context_manager_closes():
     with AuthorizerClient(client_id="cid", authorizer_url="https://auth.example.com") as c:
         assert c._config.client_id == "cid"
+    assert c._http.is_closed
