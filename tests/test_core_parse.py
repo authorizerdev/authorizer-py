@@ -41,3 +41,19 @@ def test_parse_oauth_raises_with_error_description():
         parse_oauth_response(400, body)
     assert "expired" in str(exc.value)
     assert exc.value.status == 400
+
+
+def test_parse_graphql_returns_none_when_data_is_null():
+    body = b'{"data": null}'
+    assert parse_graphql_response(200, body, "logout") is None
+
+
+def test_parse_graphql_forwards_string_errors_message():
+    body = b'{"errors": "bad input", "data": null}'
+    with pytest.raises(AuthorizerError) as exc:
+        parse_graphql_response(200, body, "login")
+    assert "bad input" in str(exc.value)
+
+
+def test_parse_oauth_empty_body_returns_empty_dict():
+    assert parse_oauth_response(200, b"") == {}

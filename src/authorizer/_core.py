@@ -98,6 +98,8 @@ def parse_graphql_response(status: int, body: bytes, field_name: str) -> dict[st
                 first = errors[0]
                 if isinstance(first, dict) and first.get("message"):
                     message = str(first["message"])
+            elif isinstance(errors, str) and errors:
+                message = errors
             raise AuthorizerError(
                 message,
                 errors=errors if isinstance(errors, list) else [errors],

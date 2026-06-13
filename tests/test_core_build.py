@@ -58,3 +58,19 @@ def test_build_oauth_request_shape():
     )
     assert spec.url == "https://auth.example.com/oauth/token"
     assert spec.json == {"client_id": "cid"}
+
+
+def test_build_headers_does_not_mutate_extra_headers_or_per_call():
+    cfg = ClientConfig("cid", "https://auth.example.com", "", {"X-Extra": "1"})
+    per_call = {"Authorization": "Bearer t"}
+    extra_before = dict(cfg.extra_headers)
+    per_before = dict(per_call)
+    build_headers(cfg, per_call)
+    assert cfg.extra_headers == extra_before
+    assert per_call == per_before
+
+
+def test_extra_headers_origin_overrides_default():
+    cfg = ClientConfig("cid", "https://auth.example.com", "", {"Origin": "https://other.com"})
+    headers = build_headers(cfg, None)
+    assert headers["Origin"] == "https://other.com"
