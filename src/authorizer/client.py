@@ -139,3 +139,87 @@ class AuthorizerClient:
     def get_meta_data(self) -> t.MetaData:
         res = self._graphql(q.META, "meta")
         return t.MetaData.from_dict(res or {})
+
+    # -- authenticated (credential headers) ------------------------------ #
+    def get_session(
+        self, req: t.SessionQueryRequest | None = None, headers: dict[str, str] | None = None
+    ) -> t.AuthToken:
+        variables = {"data": req.to_dict()} if req is not None else None
+        res = self._graphql(q.SESSION, "session", variables, headers)
+        return t.AuthToken.from_dict(res or {})
+
+    def get_profile(self, headers: dict[str, str] | None = None) -> t.User:
+        res = self._graphql(q.PROFILE, "profile", None, headers)
+        return t.User.from_dict(res or {})
+
+    def update_profile(
+        self, req: t.UpdateProfileRequest, headers: dict[str, str] | None = None
+    ) -> t.GenericResponse:
+        res = self._graphql(q.UPDATE_PROFILE, "update_profile", {"data": req.to_dict()}, headers)
+        return t.GenericResponse.from_dict(res or {})
+
+    def logout(self, headers: dict[str, str] | None = None) -> t.GenericResponse:
+        res = self._graphql(q.LOGOUT, "logout", None, headers)
+        return t.GenericResponse.from_dict(res or {})
+
+    def deactivate_account(self, headers: dict[str, str] | None = None) -> t.GenericResponse:
+        res = self._graphql(q.DEACTIVATE_ACCOUNT, "deactivate_account", None, headers)
+        return t.GenericResponse.from_dict(res or {})
+
+    def check_permissions(
+        self, req: t.CheckPermissionsRequest, headers: dict[str, str] | None = None
+    ) -> t.CheckPermissionsResponse:
+        res = self._graphql(
+            q.CHECK_PERMISSIONS, "check_permissions", {"data": req.to_dict()}, headers
+        )
+        return t.CheckPermissionsResponse.from_dict(res or {})
+
+    def list_permissions(
+        self, req: t.ListPermissionsRequest, headers: dict[str, str] | None = None
+    ) -> t.ListPermissionsResponse:
+        res = self._graphql(
+            q.LIST_PERMISSIONS, "list_permissions", {"data": req.to_dict()}, headers
+        )
+        return t.ListPermissionsResponse.from_dict(res or {})
+
+    # -- OAuth REST ------------------------------------------------------- #
+    def get_token(self, req: t.GetTokenRequest) -> t.GetTokenResponse:
+        grant_type = req.grant_type or "authorization_code"
+        if grant_type == "refresh_token" and not (req.refresh_token and req.refresh_token.strip()):
+            raise ValueError("refresh_token is required for refresh_token grant")
+        body: dict[str, Any] = {
+            "client_id": self._config.client_id,
+            "code": req.code or "",
+            "code_verifier": req.code_verifier or "",
+            "grant_type": grant_type,
+            "refresh_token": req.refresh_token or "",
+        }
+        return t.GetTokenResponse.from_dict(self._oauth("/oauth/token", body))
+
+    def revoke_token(self, req: t.RevokeTokenRequest) -> t.GenericResponse:
+        if not req.refresh_token or not req.refresh_token.strip():
+            raise ValueError("refresh_token is required")
+        body: dict[str, Any] = {
+            "refresh_token": req.refresh_token,
+            "client_id": self._config.client_id,
+        }
+        return t.GenericResponse.from_dict(self._oauth("/oauth/revoke", body))
+
+    # -- escape hatch ----------------------------------------------------- #
+    def graphql_query(
+        self,
+        query: str,
+        variables: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        spec = build_graphql_request(
+            self._config.authorizer_url, query, variables, build_headers(self._config, headers)
+        )
+        res = self._send(spec)
+        if res.status_code >= 400:
+            parse_graphql_response(res.status_code, res.content, "")  # raises
+        import json as _json
+
+        decoded = _json.loads(res.content) if res.content else {}
+        data = decoded.get("data") if isinstance(decoded, dict) else None
+        return data if isinstance(data, dict) else {}
