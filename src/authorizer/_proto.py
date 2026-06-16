@@ -70,7 +70,7 @@ def _wrap(value: Any, descriptor: Any) -> Any:
         if field.message_type.full_name == "authorizer.v1.AppData":
             # SDK contract: free-form maps are flat; wrap into the proto AppData.
             out[key] = {"value": val} if isinstance(val, dict) else val
-        elif field.label == FieldDescriptor.LABEL_REPEATED and isinstance(val, list):
+        elif isinstance(val, list):
             out[key] = [_wrap(v, field.message_type) for v in val]
         else:
             out[key] = _wrap(val, field.message_type)
@@ -131,7 +131,7 @@ def _normalize_field(val: Any, field: Any) -> Any:
         FieldDescriptor.TYPE_FIXED64,
         FieldDescriptor.TYPE_SFIXED64,
     }
-    if field.label == FieldDescriptor.LABEL_REPEATED and isinstance(val, list):
+    if isinstance(val, list):
         if field.type == FieldDescriptor.TYPE_MESSAGE:
             return [_normalize(v, field.message_type) for v in val]
         if field.type in int_types:
