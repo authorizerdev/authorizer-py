@@ -23,10 +23,22 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Typing :: Typed",
 ]
-dependencies = ["httpx>=0.24,<1"]
+# protobuf is a base dependency: the REST protocol parses grpc-gateway responses
+# with protojson (int64-as-string + single-field wrappers) using the vendored
+# proto message types. grpcio is only needed for the optional ``grpc`` protocol.
+dependencies = ["httpx>=0.24,<1", "protobuf>=4"]
 
 [project.optional-dependencies]
-dev = ["pytest>=7", "pytest-asyncio>=0.23", "respx>=0.20", "ruff>=0.5", "mypy>=1.8"]
+grpc = ["grpcio>=1.60", "protobuf>=4"]
+dev = [
+    "pytest>=7",
+    "pytest-asyncio>=0.23",
+    "respx>=0.20",
+    "ruff>=0.5",
+    "mypy>=1.8",
+    "grpcio>=1.60",
+    "protobuf>=4",
+]
 
 [project.urls]
 Homepage = "https://authorizer.dev"
@@ -39,6 +51,8 @@ packages = ["src/authorizer"]
 [tool.ruff]
 line-length = 100
 target-version = "py39"
+# Vendored generated gRPC/protobuf stubs — never lint.
+extend-exclude = ["src/authorizer/_grpc"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "W"]
@@ -47,7 +61,21 @@ select = ["E", "F", "I", "UP", "B", "W"]
 python_version = "3.9"
 strict = true
 warn_unused_ignores = true
+# Vendored generated gRPC/protobuf stubs — not type-checked.
+exclude = ["src/authorizer/_grpc/"]
+
+[[tool.mypy.overrides]]
+module = "authorizer._grpc.*"
+ignore_errors = true
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["grpc", "grpc.*", "google.protobuf.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "live: integration tests that hit a real Authorizer server (deselect with -m 'not live')",
+]

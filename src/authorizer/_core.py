@@ -9,6 +9,11 @@ from urllib.parse import urlparse
 
 from .exceptions import AuthorizerError
 
+# Supported transport protocols. ``graphql`` is the default (100% backward
+# compatible). ``rest`` maps to the public/admin proto google.api.http paths;
+# ``grpc`` calls the vendored stubs (requires the optional ``grpc`` extra).
+PROTOCOLS = ("graphql", "rest", "grpc")
+
 
 @dataclass
 class ClientConfig:
@@ -16,6 +21,12 @@ class ClientConfig:
     authorizer_url: str
     redirect_url: str
     extra_headers: dict[str, str]
+    protocol: str = "graphql"
+    admin_secret: str = ""
+    # Explicit gRPC endpoint (host:port). The server's gRPC listener runs on a
+    # separate port (default 9091), not the HTTP URL's port. When unset, the
+    # gRPC target is derived from ``authorizer_url``'s host with port 9091.
+    grpc_endpoint: str = ""
 
 
 @dataclass
@@ -40,6 +51,8 @@ def build_headers(config: ClientConfig, per_call: dict[str, str] | None) -> dict
         "x-authorizer-url": config.authorizer_url,
         "x-authorizer-client-id": config.client_id,
     }
+    if config.admin_secret:
+        headers["x-authorizer-admin-secret"] = config.admin_secret
     headers.update(config.extra_headers)
     if per_call:
         headers.update(per_call)
@@ -72,6 +85,102 @@ def build_oauth_request(
     headers: dict[str, str],
 ) -> RequestSpec:
     return RequestSpec("POST", f"{authorizer_url}{path}", headers, body)
+
+
+def prepare_http(
+    config: ClientConfig,
+    spec: Any,
+    data: dict[str, Any] | None,
+    headers: dict[str, str] | None,
+) -> tuple[RequestSpec, str, str | None]:
+    """Build the RequestSpec for graphql/rest from a MethodSpec + data.
+
+    Returns ``(request_spec, kind, unwrap)`` where ``kind`` is ``"graphql"`` or
+    ``"rest"`` (selects the response parser) and ``unwrap`` is the response
+    field to extract (graphql field name, or the rest wrapper key).
+    """
+    full_headers = build_headers(config, headers)
+    if config.protocol == "rest":
+        body = None if spec.rest_method == "GET" else (data or {})
+        req = build_rest_request(
+            config.authorizer_url, spec.rest_method, spec.rest_path, body, full_headers
+        )
+        return req, "rest", spec.rest_unwrap
+    variables = {"data": data} if data is not None else None
+    req = build_graphql_request(config.authorizer_url, spec.gql_query, variables, full_headers)
+    return req, "graphql", spec.gql_field
+
+
+def build_rest_request(
+    authorizer_url: str,
+    method: str,
+    path: str,
+    body: dict[str, Any] | None,
+    headers: dict[str, str],
+) -> RequestSpec:
+    """Build a REST request for a proto google.api.http annotated path."""
+    return RequestSpec(method, f"{authorizer_url}{path}", headers, body or {})
+
+
+def raise_for_rest_error(status: int, body: bytes) -> None:
+    """Raise AuthorizerError for a failed grpc-gateway REST response (>= 400).
+
+    Errors surface in a ``{"message": ..., "code": ...}`` shape; this runs before
+    protojson parsing because the error body is not a valid proto response.
+    """
+    if status < 400:
+        return
+    decoded = _decode(body)
+    message = f"HTTP {status}"
+    if isinstance(decoded, dict):
+        message = str(decoded.get("message") or decoded.get("error") or message)
+    text = body.decode("utf-8", "replace") if not isinstance(decoded, dict) else ""
+    raise AuthorizerError(f"{message}: {text}".strip().rstrip(":").strip(), status=status)
+
+
+def parse_rest_response(
+    status: int, body: bytes, unwrap: str | None
+) -> dict[str, Any] | None:
+    """Parse a REST gateway JSON response with plain JSON (no proto types).
+
+    Retained for REST methods that have no proto response message. The proto-typed
+    path (most methods) uses ``_grpc_transport.parse_rest_proto`` instead so int64
+    strings and field names map correctly.
+    """
+    raise_for_rest_error(status, body)
+    decoded = _decode(body)
+    if not isinstance(decoded, dict):
+        return None
+    if unwrap is None:
+        return decoded
+    inner = decoded.get(unwrap)
+    return inner if isinstance(inner, dict) else None
+
+
+def parse_rest(
+    spec: Any, status: int, body: bytes, unwrap: str | None, admin: bool
+) -> dict[str, Any] | None:
+    """Parse a REST response for a MethodSpec.
+
+    Proto-backed REST methods (``spec.grpc_method`` set) are parsed with protojson
+    so int64/uint64 strings and field names map correctly; methods without a proto
+    response fall back to plain JSON.
+    """
+    raise_for_rest_error(status, body)
+    if spec.grpc_method:
+        from ._proto import parse_rest_proto
+
+        result = parse_rest_proto(body, spec.grpc_method, admin, unwrap)
+        return result if isinstance(result, dict) else None
+    return parse_rest_response(status, body, unwrap)
+
+
+def unsupported_protocol_error(method: str, protocol: str, supported: tuple[str, ...]) -> Any:
+    """Build a clear AuthorizerError for a method called on an unsupported protocol."""
+    alts = " or ".join(p for p in supported) if supported else "(none)"
+    return AuthorizerError(
+        f"{method} is not available over {protocol}; use {alts}"
+    )
 
 
 def _decode(body: bytes) -> Any:

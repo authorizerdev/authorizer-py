@@ -7,9 +7,10 @@ from typing import Any
 
 import httpx
 
-from . import _queries as q
+from . import _dispatch as d
 from . import types as t
 from ._core import (
+    PROTOCOLS,
     ClientConfig,
     RequestSpec,
     build_graphql_request,
@@ -18,12 +19,18 @@ from ._core import (
     parse_graphql_data,
     parse_graphql_response,
     parse_oauth_response,
+    parse_rest,
+    prepare_http,
+    unsupported_protocol_error,
 )
+from ._dispatch import MethodSpec
 from .exceptions import AuthorizerConnectionError
 
 
 class AsyncAuthorizerClient:
     """Asynchronous client for an Authorizer instance."""
+
+    _ADMIN = False
 
     def __init__(
         self,
@@ -31,22 +38,32 @@ class AsyncAuthorizerClient:
         authorizer_url: str,
         redirect_url: str = "",
         extra_headers: dict[str, str] | None = None,
+        protocol: str = "graphql",
+        grpc_endpoint: str = "",
     ) -> None:
         if not client_id or not client_id.strip():
             raise ValueError("client_id is required")
         if not authorizer_url or not authorizer_url.strip():
             raise ValueError("authorizer_url is required")
+        if protocol not in PROTOCOLS:
+            raise ValueError(f"protocol must be one of {PROTOCOLS}, got {protocol!r}")
         self._config = ClientConfig(
             client_id=client_id,
             authorizer_url=authorizer_url.strip().rstrip("/"),
             redirect_url=redirect_url.strip().rstrip("/"),
             extra_headers=dict(extra_headers or {}),
+            protocol=protocol,
+            grpc_endpoint=grpc_endpoint.strip(),
         )
         self._http = httpx.AsyncClient()
+        self._channel: Any = None
 
     # -- lifecycle -------------------------------------------------------- #
     async def aclose(self) -> None:
         await self._http.aclose()
+        if self._channel is not None:
+            await self._channel.close()
+            self._channel = None
 
     async def __aenter__(self) -> AsyncAuthorizerClient:
         return self
@@ -68,19 +85,6 @@ class AsyncAuthorizerClient:
         except httpx.HTTPError as e:  # network/transport failure
             raise AuthorizerConnectionError(str(e)) from e
 
-    async def _graphql(
-        self,
-        query: str,
-        field_name: str,
-        variables: dict[str, Any] | None = None,
-        headers: dict[str, str] | None = None,
-    ) -> dict[str, Any] | None:
-        spec = build_graphql_request(
-            self._config.authorizer_url, query, variables, build_headers(self._config, headers)
-        )
-        res = await self._send(spec)
-        return parse_graphql_response(res.status_code, res.content, field_name)
-
     async def _oauth(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
         spec = build_oauth_request(
             self._config.authorizer_url, path, body, build_headers(self._config, None)
@@ -88,37 +92,63 @@ class AsyncAuthorizerClient:
         res = await self._send(spec)
         return parse_oauth_response(res.status_code, res.content)
 
+    async def _invoke(
+        self,
+        method: str,
+        spec: MethodSpec,
+        data: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> dict[str, Any] | None:
+        """Dispatch ``method`` over the configured protocol and return a dict."""
+        proto = self._config.protocol
+        if proto not in spec.protocols:
+            raise unsupported_protocol_error(method, proto, spec.protocols)
+        if proto == "grpc":
+            from . import _grpc_transport as g
+
+            if self._channel is None:
+                self._channel = g.make_async_channel(
+                    self._config.authorizer_url, self._config.grpc_endpoint
+                )
+            md = g.grpc_metadata(self._config, headers)
+            return await g.grpc_acall(self._channel, spec, data, md, self._ADMIN)
+        req, kind, unwrap = prepare_http(self._config, spec, data, headers)
+        res = await self._send(req)
+        if kind == "rest":
+            return parse_rest(spec, res.status_code, res.content, unwrap, self._ADMIN)
+        return parse_graphql_response(res.status_code, res.content, unwrap or "")
+
     # -- public auth flows ----------------------------------------------- #
     async def login(self, req: t.LoginRequest) -> t.AuthToken:
-        res = await self._graphql(q.LOGIN, "login", {"data": req.to_dict()})
+        res = await self._invoke("login", d.PUBLIC["login"], req.to_dict())
         return t.AuthToken.from_dict(res or {})
 
     async def signup(self, req: t.SignUpRequest) -> t.AuthToken:
-        res = await self._graphql(q.SIGNUP, "signup", {"data": req.to_dict()})
+        res = await self._invoke("signup", d.PUBLIC["signup"], req.to_dict())
         return t.AuthToken.from_dict(res or {})
 
     async def magic_link_login(self, req: t.MagicLinkLoginRequest) -> t.GenericResponse:
         payload = req.to_dict()
         if not payload.get("redirect_uri") and self._config.redirect_url:
             payload["redirect_uri"] = self._config.redirect_url
-        res = await self._graphql(q.MAGIC_LINK_LOGIN, "magic_link_login", {"data": payload})
+        res = await self._invoke("magic_link_login", d.PUBLIC["magic_link_login"], payload)
         return t.GenericResponse.from_dict(res or {})
 
     async def verify_otp(self, req: t.VerifyOTPRequest) -> t.AuthToken:
-        res = await self._graphql(q.VERIFY_OTP, "verify_otp", {"data": req.to_dict()})
+        res = await self._invoke("verify_otp", d.PUBLIC["verify_otp"], req.to_dict())
         return t.AuthToken.from_dict(res or {})
 
     async def verify_email(self, req: t.VerifyEmailRequest) -> t.AuthToken:
-        res = await self._graphql(q.VERIFY_EMAIL, "verify_email", {"data": req.to_dict()})
+        res = await self._invoke("verify_email", d.PUBLIC["verify_email"], req.to_dict())
         return t.AuthToken.from_dict(res or {})
 
     async def resend_otp(self, req: t.ResendOTPRequest) -> t.GenericResponse:
-        res = await self._graphql(q.RESEND_OTP, "resend_otp", {"data": req.to_dict()})
+        res = await self._invoke("resend_otp", d.PUBLIC["resend_otp"], req.to_dict())
         return t.GenericResponse.from_dict(res or {})
 
     async def resend_verify_email(self, req: t.ResendVerifyEmailRequest) -> t.GenericResponse:
-        res = await self._graphql(
-            q.RESEND_VERIFY_EMAIL, "resend_verify_email", {"data": req.to_dict()}
+        res = await self._invoke(
+            "resend_verify_email", d.PUBLIC["resend_verify_email"], req.to_dict()
         )
         return t.GenericResponse.from_dict(res or {})
 
@@ -126,72 +156,72 @@ class AsyncAuthorizerClient:
         payload = req.to_dict()
         if not payload.get("redirect_uri") and self._config.redirect_url:
             payload["redirect_uri"] = self._config.redirect_url
-        res = await self._graphql(q.FORGOT_PASSWORD, "forgot_password", {"data": payload})
+        res = await self._invoke("forgot_password", d.PUBLIC["forgot_password"], payload)
         return t.ForgotPasswordResponse.from_dict(res or {})
 
     async def reset_password(self, req: t.ResetPasswordRequest) -> t.GenericResponse:
-        res = await self._graphql(q.RESET_PASSWORD, "reset_password", {"data": req.to_dict()})
+        res = await self._invoke("reset_password", d.PUBLIC["reset_password"], req.to_dict())
         return t.GenericResponse.from_dict(res or {})
 
     async def validate_jwt_token(
         self, req: t.ValidateJWTTokenRequest
     ) -> t.ValidateJWTTokenResponse:
-        res = await self._graphql(
-            q.VALIDATE_JWT_TOKEN, "validate_jwt_token", {"data": req.to_dict()}
+        res = await self._invoke(
+            "validate_jwt_token", d.PUBLIC["validate_jwt_token"], req.to_dict()
         )
         return t.ValidateJWTTokenResponse.from_dict(res or {})
 
     async def validate_session(self, req: t.ValidateSessionRequest) -> t.ValidateSessionResponse:
-        res = await self._graphql(
-            q.VALIDATE_SESSION, "validate_session", {"data": req.to_dict()}
-        )
+        res = await self._invoke("validate_session", d.PUBLIC["validate_session"], req.to_dict())
         return t.ValidateSessionResponse.from_dict(res or {})
 
     async def get_meta_data(self) -> t.MetaData:
-        res = await self._graphql(q.META, "meta")
+        res = await self._invoke("meta", d.PUBLIC["meta"], None)
         return t.MetaData.from_dict(res or {})
 
     # -- authenticated (credential headers) ------------------------------ #
     async def get_session(
         self, req: t.SessionQueryRequest | None = None, headers: dict[str, str] | None = None
     ) -> t.AuthToken:
-        variables = {"data": req.to_dict()} if req is not None else None
-        res = await self._graphql(q.SESSION, "session", variables, headers)
+        data = req.to_dict() if req is not None else None
+        res = await self._invoke("session", d.PUBLIC["session"], data, headers)
         return t.AuthToken.from_dict(res or {})
 
     async def get_profile(self, headers: dict[str, str] | None = None) -> t.User:
-        res = await self._graphql(q.PROFILE, "profile", None, headers)
+        res = await self._invoke("profile", d.PUBLIC["profile"], None, headers)
         return t.User.from_dict(res or {})
 
     async def update_profile(
         self, req: t.UpdateProfileRequest, headers: dict[str, str] | None = None
     ) -> t.GenericResponse:
-        res = await self._graphql(
-            q.UPDATE_PROFILE, "update_profile", {"data": req.to_dict()}, headers
+        res = await self._invoke(
+            "update_profile", d.PUBLIC["update_profile"], req.to_dict(), headers
         )
         return t.GenericResponse.from_dict(res or {})
 
     async def logout(self, headers: dict[str, str] | None = None) -> t.GenericResponse:
-        res = await self._graphql(q.LOGOUT, "logout", None, headers)
+        res = await self._invoke("logout", d.PUBLIC["logout"], None, headers)
         return t.GenericResponse.from_dict(res or {})
 
     async def deactivate_account(self, headers: dict[str, str] | None = None) -> t.GenericResponse:
-        res = await self._graphql(q.DEACTIVATE_ACCOUNT, "deactivate_account", None, headers)
+        res = await self._invoke(
+            "deactivate_account", d.PUBLIC["deactivate_account"], None, headers
+        )
         return t.GenericResponse.from_dict(res or {})
 
     async def check_permissions(
         self, req: t.CheckPermissionsRequest, headers: dict[str, str] | None = None
     ) -> t.CheckPermissionsResponse:
-        res = await self._graphql(
-            q.CHECK_PERMISSIONS, "check_permissions", {"data": req.to_dict()}, headers
+        res = await self._invoke(
+            "check_permissions", d.PUBLIC["check_permissions"], req.to_dict(), headers
         )
         return t.CheckPermissionsResponse.from_dict(res or {})
 
     async def list_permissions(
         self, req: t.ListPermissionsRequest, headers: dict[str, str] | None = None
     ) -> t.ListPermissionsResponse:
-        res = await self._graphql(
-            q.LIST_PERMISSIONS, "list_permissions", {"data": req.to_dict()}, headers
+        res = await self._invoke(
+            "list_permissions", d.PUBLIC["list_permissions"], req.to_dict(), headers
         )
         return t.ListPermissionsResponse.from_dict(res or {})
 
