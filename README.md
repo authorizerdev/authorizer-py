@@ -21,6 +21,8 @@ pip install authorizer-py
 | `authorizer_url` | Yes | Base URL of your Authorizer instance (no trailing slash) |
 | `redirect_url` | No | Default redirect URL used by magic-link and forgot-password flows |
 | `extra_headers` | No | Additional headers sent on every request (e.g. custom `Origin`) |
+| `protocol` | No | Transport: `"graphql"` (default), `"rest"`, or `"grpc"` |
+| `grpc_endpoint` | No | gRPC target `host:port`. The server's gRPC listener runs on a **separate port** (default `9091`), not the HTTP URL's port. When unset, the host is derived from `authorizer_url` and port `9091` is used. Only used when `protocol="grpc"`. |
 
 **Sync:**
 
@@ -113,6 +115,31 @@ accessible = client.list_permissions(
 )
 print("can view:", accessible.objects)
 client.close()
+```
+
+## gRPC transport
+
+Set `protocol="grpc"` to call the server over gRPC. This requires the optional
+gRPC dependencies:
+
+```bash
+pip install 'authorizer-py[grpc]'
+```
+
+The server's gRPC listener runs on a **separate port** (default `9091`), not the
+HTTP URL's port (`8080`). When `grpc_endpoint` is unset, the host is taken from
+`authorizer_url` and port `9091` is used; pass `grpc_endpoint` to dial a custom
+target explicitly:
+
+```python
+from authorizer import AuthorizerClient
+
+client = AuthorizerClient(
+    client_id="YOUR_CLIENT_ID",
+    authorizer_url="https://your-instance.authorizer.dev",
+    protocol="grpc",
+    grpc_endpoint="your-instance.authorizer.dev:9091",  # optional; defaults to host:9091
+)
 ```
 
 ## License

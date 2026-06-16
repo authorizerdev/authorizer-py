@@ -428,3 +428,472 @@ class ListPermissionsResponse:
             permissions=[Permission.from_dict(p) for p in perms if isinstance(p, dict)],
             truncated=bool(data.get("truncated", False)),
         )
+
+
+# --------------------------------------------------------------------------- #
+# Admin request types
+# --------------------------------------------------------------------------- #
+@dataclass
+class PaginationRequest(_Request):
+    page: int | None = None
+    limit: int | None = None
+    page_token: str | None = None
+
+
+@dataclass
+class PaginatedRequest(_Request):
+    pagination: PaginationRequest | None = None
+
+
+@dataclass
+class AdminLoginRequest(_Request):
+    admin_secret: str
+
+
+@dataclass
+class GetUserRequest(_Request):
+    id: str | None = None
+    email: str | None = None
+
+
+@dataclass
+class UpdateUserRequest(_Request):
+    id: str
+    email: str | None = None
+    email_verified: bool | None = None
+    given_name: str | None = None
+    family_name: str | None = None
+    middle_name: str | None = None
+    nickname: str | None = None
+    gender: str | None = None
+    birthdate: str | None = None
+    phone_number: str | None = None
+    phone_number_verified: bool | None = None
+    picture: str | None = None
+    roles: list[str] | None = None
+    is_multi_factor_auth_enabled: bool | None = None
+    app_data: dict[str, Any] | None = None
+
+
+@dataclass
+class DeleteUserRequest(_Request):
+    email: str
+
+
+@dataclass
+class UpdateAccessRequest(_Request):
+    user_id: str
+
+
+@dataclass
+class InviteMembersRequest(_Request):
+    emails: list[str]
+    redirect_uri: str | None = None
+
+
+@dataclass
+class AddWebhookRequest(_Request):
+    event_name: str
+    endpoint: str
+    enabled: bool = True
+    event_description: str | None = None
+    headers: dict[str, Any] | None = None
+
+
+@dataclass
+class UpdateWebhookRequest(_Request):
+    id: str
+    event_name: str | None = None
+    event_description: str | None = None
+    endpoint: str | None = None
+    enabled: bool | None = None
+    headers: dict[str, Any] | None = None
+
+
+@dataclass
+class WebhookRequest(_Request):
+    id: str
+
+
+@dataclass
+class ListWebhookLogRequest(_Request):
+    pagination: PaginationRequest | None = None
+    webhook_id: str | None = None
+
+
+@dataclass
+class TestEndpointRequest(_Request):
+    endpoint: str
+    event_name: str
+    event_description: str | None = None
+    headers: dict[str, Any] | None = None
+
+
+@dataclass
+class AddEmailTemplateRequest(_Request):
+    event_name: str
+    subject: str
+    template: str
+    design: str | None = None
+
+
+@dataclass
+class UpdateEmailTemplateRequest(_Request):
+    id: str
+    event_name: str | None = None
+    template: str | None = None
+    subject: str | None = None
+    design: str | None = None
+
+
+@dataclass
+class DeleteEmailTemplateRequest(_Request):
+    id: str
+
+
+@dataclass
+class ListAuditLogRequest(_Request):
+    pagination: PaginationRequest | None = None
+    action: str | None = None
+    actor_id: str | None = None
+    resource_type: str | None = None
+    resource_id: str | None = None
+    from_timestamp: int | None = None
+    to_timestamp: int | None = None
+
+
+@dataclass
+class AdminSignupRequest(_Request):
+    admin_secret: str
+
+
+@dataclass
+class GenerateJWTKeysRequest(_Request):
+    type: str
+
+
+@dataclass
+class FgaWriteModelRequest(_Request):
+    dsl: str
+
+
+@dataclass
+class FgaWriteTuplesRequest(_Request):
+    tuples: list[FgaTupleInput]
+
+
+@dataclass
+class FgaReadTuplesRequest(_Request):
+    user: str | None = None
+    relation: str | None = None
+    object: str | None = None
+    page_size: int | None = None
+    continuation_token: str | None = None
+
+
+@dataclass
+class FgaListUsersRequest(_Request):
+    object: str
+    relation: str
+    user_type: str
+
+
+@dataclass
+class FgaExpandRequest(_Request):
+    relation: str
+    object: str
+
+
+# --------------------------------------------------------------------------- #
+# Admin response types
+# --------------------------------------------------------------------------- #
+@dataclass
+class Pagination:
+    limit: int = 0
+    page: int = 0
+    offset: int = 0
+    total: int = 0
+    next_page_token: str | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Pagination:
+        return cls(**_known(cls, data))
+
+
+def _pagination(data: dict[str, Any]) -> Pagination:
+    raw = data.get("pagination")
+    return Pagination.from_dict(raw) if isinstance(raw, dict) else Pagination()
+
+
+def _users(data: dict[str, Any], key: str) -> list[User]:
+    raw = data.get(key)
+    items = raw if isinstance(raw, list) else []
+    return [User.from_dict(u) for u in items if isinstance(u, dict)]
+
+
+@dataclass
+class AdminMeta:
+    roles: list[str] = field(default_factory=list)
+    default_roles: list[str] = field(default_factory=list)
+    protected_roles: list[str] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> AdminMeta:
+        return cls(**_known(cls, data))
+
+
+@dataclass
+class UsersResponse:
+    users: list[User] = field(default_factory=list)
+    pagination: Pagination = field(default_factory=Pagination)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> UsersResponse:
+        return cls(users=_users(data, "users"), pagination=_pagination(data))
+
+
+@dataclass
+class VerificationRequest:
+    id: str = ""
+    identifier: str | None = None
+    token: str | None = None
+    email: str | None = None
+    expires: int | None = None
+    created_at: int | None = None
+    updated_at: int | None = None
+    nonce: str | None = None
+    redirect_uri: str | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> VerificationRequest:
+        return cls(**_known(cls, data))
+
+
+@dataclass
+class VerificationRequestsResponse:
+    verification_requests: list[VerificationRequest] = field(default_factory=list)
+    pagination: Pagination = field(default_factory=Pagination)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> VerificationRequestsResponse:
+        raw = data.get("verification_requests")
+        items = raw if isinstance(raw, list) else []
+        return cls(
+            verification_requests=[
+                VerificationRequest.from_dict(v) for v in items if isinstance(v, dict)
+            ],
+            pagination=_pagination(data),
+        )
+
+
+@dataclass
+class InviteMembersResponse:
+    message: str = ""
+    users: list[User] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> InviteMembersResponse:
+        # GraphQL returns `Users` (capitalized); REST/grpc return `users`.
+        key = "Users" if "Users" in data else "users"
+        return cls(message=str(data.get("message", "")), users=_users(data, key))
+
+
+@dataclass
+class Webhook:
+    id: str = ""
+    event_name: str | None = None
+    event_description: str | None = None
+    endpoint: str | None = None
+    enabled: bool | None = None
+    headers: dict[str, Any] | None = None
+    created_at: int | None = None
+    updated_at: int | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Webhook:
+        return cls(**_known(cls, data))
+
+
+@dataclass
+class WebhooksResponse:
+    webhooks: list[Webhook] = field(default_factory=list)
+    pagination: Pagination = field(default_factory=Pagination)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> WebhooksResponse:
+        raw = data.get("webhooks")
+        items = raw if isinstance(raw, list) else []
+        return cls(
+            webhooks=[Webhook.from_dict(w) for w in items if isinstance(w, dict)],
+            pagination=_pagination(data),
+        )
+
+
+@dataclass
+class WebhookLog:
+    id: str = ""
+    http_status: int | None = None
+    response: str | None = None
+    request: str | None = None
+    webhook_id: str | None = None
+    created_at: int | None = None
+    updated_at: int | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> WebhookLog:
+        return cls(**_known(cls, data))
+
+
+@dataclass
+class WebhookLogsResponse:
+    webhook_logs: list[WebhookLog] = field(default_factory=list)
+    pagination: Pagination = field(default_factory=Pagination)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> WebhookLogsResponse:
+        raw = data.get("webhook_logs")
+        items = raw if isinstance(raw, list) else []
+        return cls(
+            webhook_logs=[WebhookLog.from_dict(w) for w in items if isinstance(w, dict)],
+            pagination=_pagination(data),
+        )
+
+
+@dataclass
+class TestEndpointResponse:
+    http_status: int | None = None
+    response: str | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> TestEndpointResponse:
+        return cls(**_known(cls, data))
+
+
+@dataclass
+class EmailTemplate:
+    id: str = ""
+    event_name: str | None = None
+    template: str | None = None
+    design: str | None = None
+    subject: str | None = None
+    created_at: int | None = None
+    updated_at: int | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> EmailTemplate:
+        return cls(**_known(cls, data))
+
+
+@dataclass
+class EmailTemplatesResponse:
+    email_templates: list[EmailTemplate] = field(default_factory=list)
+    pagination: Pagination = field(default_factory=Pagination)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> EmailTemplatesResponse:
+        raw = data.get("email_templates")
+        items = raw if isinstance(raw, list) else []
+        return cls(
+            email_templates=[EmailTemplate.from_dict(e) for e in items if isinstance(e, dict)],
+            pagination=_pagination(data),
+        )
+
+
+@dataclass
+class AuditLog:
+    id: str = ""
+    actor_id: str | None = None
+    actor_type: str | None = None
+    actor_email: str | None = None
+    action: str | None = None
+    resource_type: str | None = None
+    resource_id: str | None = None
+    ip_address: str | None = None
+    user_agent: str | None = None
+    metadata: str | None = None
+    created_at: int | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> AuditLog:
+        return cls(**_known(cls, data))
+
+
+@dataclass
+class AuditLogsResponse:
+    audit_logs: list[AuditLog] = field(default_factory=list)
+    pagination: Pagination = field(default_factory=Pagination)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> AuditLogsResponse:
+        raw = data.get("audit_logs")
+        items = raw if isinstance(raw, list) else []
+        return cls(
+            audit_logs=[AuditLog.from_dict(a) for a in items if isinstance(a, dict)],
+            pagination=_pagination(data),
+        )
+
+
+@dataclass
+class GenerateJWTKeysResponse:
+    secret: str | None = None
+    public_key: str | None = None
+    private_key: str | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> GenerateJWTKeysResponse:
+        return cls(**_known(cls, data))
+
+
+@dataclass
+class FgaModel:
+    id: str = ""
+    dsl: str = ""
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> FgaModel:
+        return cls(**_known(cls, data))
+
+
+@dataclass
+class FgaTuple:
+    user: str = ""
+    relation: str = ""
+    object: str = ""
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> FgaTuple:
+        return cls(**_known(cls, data))
+
+
+@dataclass
+class FgaReadTuplesResponse:
+    tuples: list[FgaTuple] = field(default_factory=list)
+    continuation_token: str | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> FgaReadTuplesResponse:
+        raw = data.get("tuples")
+        items = raw if isinstance(raw, list) else []
+        return cls(
+            tuples=[FgaTuple.from_dict(x) for x in items if isinstance(x, dict)],
+            continuation_token=data.get("continuation_token"),
+        )
+
+
+@dataclass
+class FgaListUsersResponse:
+    users: list[str] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> FgaListUsersResponse:
+        raw = data.get("users")
+        return cls(users=list(raw) if isinstance(raw, list) else [])
+
+
+@dataclass
+class FgaExpandResponse:
+    tree: str = ""
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> FgaExpandResponse:
+        return cls(tree=str(data.get("tree", "")))

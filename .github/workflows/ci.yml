@@ -24,6 +24,39 @@ jobs:
       - name: Type-check
         run: mypy src
       - name: Test
-        run: pytest -q
+        run: pytest -q -m "not live"
       - name: Build wheel
         run: pip install build && python -m build --wheel
+
+  live:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install -e ".[dev,grpc]"
+      # Authorizer v2 is configured via CLI flags (not env vars), so the server
+      # is started with `docker run` rather than a `services:` block. gRPC needs
+      # its own port (9091) and --grpc-insecure for plaintext CI testing.
+      - name: Start Authorizer
+        run: |
+          docker run -d --name authorizer \
+            -p 8080:8080 -p 9091:9091 \
+            quay.io/authorizer/authorizer:2.3.0-rc.9 \
+            --database-type=sqlite --database-url=test.db \
+            --jwt-type=HS256 --jwt-secret=test \
+            --admin-secret=admin --client-id=ci-client --client-secret=secret \
+            --grpc-insecure=true
+          for i in $(seq 1 30); do
+            curl -fsS http://localhost:8080/health && break || sleep 2
+          done
+      - name: Live integration tests
+        env:
+          AUTHORIZER_TEST_URL: http://localhost:8080
+          AUTHORIZER_TEST_GRPC: localhost:9091
+          AUTHORIZER_TEST_CLIENT_ID: ci-client
+          AUTHORIZER_ADMIN_SECRET: admin
+          AUTHORIZER_PROTOCOLS: graphql,rest,grpc
+        run: pytest tests/integration -m live -q
