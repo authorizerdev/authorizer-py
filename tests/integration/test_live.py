@@ -1,9 +1,9 @@
 """Live integration tests against a real Authorizer server.
 
 Gated behind ``@pytest.mark.live`` so it never runs in the default unit suite.
-Run against ``lakhansamani/authorizer:2.3.0-rc.9`` (see SDK_ADMIN_SPEC.md):
+Run against ``lakhansamani/authorizer:2.3.0`` (see SDK_ADMIN_SPEC.md):
 
-    docker run -p 8090:8080 -p 9091:9091 lakhansamani/authorizer:2.3.0-rc.9 \\
+    docker run -p 8090:8080 -p 9091:9091 lakhansamani/authorizer:2.3.0 \\
         --database-type=sqlite --database-url=test.db --jwt-type=HS256 \\
         --jwt-secret=test --admin-secret=admin --client-id=test-client \\
         --client-secret=secret
@@ -16,7 +16,7 @@ Run against ``lakhansamani/authorizer:2.3.0-rc.9`` (see SDK_ADMIN_SPEC.md):
         pytest tests/integration -m live -v
 
 Every public method is exercised over EVERY protocol (graphql/rest/grpc) on both
-the sync and async clients. As of 2.3.0-rc.9 (PR #635 + #636) there are no
+the sync and async clients. As of 2.3.0 (PR #635 + #636) there are no
 graphql-only public methods: all 20 public RPCs work over all three protocols and
 the response envelope is flat (AuthResponse/User/Meta returned directly).
 """

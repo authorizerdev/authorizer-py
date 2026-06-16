@@ -38,7 +38,7 @@ GQL_ONLY = ("graphql",)
 # Public (user) service methods
 # --------------------------------------------------------------------------- #
 #
-# Protocol availability (server 2.3.0-rc.9, PR #635 + #636): ALL 20 public RPCs
+# Protocol availability (server 2.3.0, PR #635 + #636): ALL 20 public RPCs
 # now work over graphql + rest + grpc. There are no graphql-only public methods.
 # The response envelope is FLATTENED: the bare domain message is returned
 # (Signup/Login/Session/VerifyEmail/VerifyOtp -> AuthResponse, Profile -> User,
