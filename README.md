@@ -1,11 +1,10 @@
 # authorizer-python
 
-Python SDK for [authorizer.dev](https://authorizer.dev) — self-hosted authentication & authorization.
+Python SDK for [authorizer.dev](https://authorizer.dev) — self-hosted authentication & authorization. Current version: **0.2.0**.
 
 ## Getting Started
 
-You need a running Authorizer instance before using this SDK.
-See the [deployment guide](https://docs.authorizer.dev/deployment) to spin one up.
+You need a running Authorizer instance before using this SDK. See the [deployment guide](https://docs.authorizer.dev/deployment) to spin one up.
 
 ## Install
 
@@ -13,18 +12,32 @@ See the [deployment guide](https://docs.authorizer.dev/deployment) to spin one u
 pip install authorizer-py
 ```
 
+For gRPC transport, install the optional extras:
+
+```bash
+pip install 'authorizer-py[grpc]'
+```
+
 ## Initialize the client
 
-| Parameter | Required | Description |
-|---|---|---|
-| `client_id` | Yes | Your Authorizer app's client ID |
-| `authorizer_url` | Yes | Base URL of your Authorizer instance (no trailing slash) |
-| `redirect_url` | No | Default redirect URL used by magic-link and forgot-password flows |
-| `extra_headers` | No | Additional headers sent on every request (e.g. custom `Origin`) |
-| `protocol` | No | Transport: `"graphql"` (default), `"rest"`, or `"grpc"` |
-| `grpc_endpoint` | No | gRPC target `host:port`. The server's gRPC listener runs on a **separate port** (default `9091`), not the HTTP URL's port. When unset, the host is derived from `authorizer_url` and port `9091` is used. Only used when `protocol="grpc"`. |
+| Parameter       | Required | Description                                                                                                                                                     |
+| --------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `client_id`     | Yes      | Your Authorizer app's client ID                                                                                                                                 |
+| `authorizer_url`| Yes      | Base URL of your Authorizer instance (no trailing slash)                                                                                                        |
+| `redirect_url`  | No       | Default redirect URL used by magic-link and forgot-password flows                                                                                               |
+| `extra_headers` | No       | Additional headers sent on every request (e.g. custom `Origin`)                                                                                                 |
+| `protocol`      | No       | Transport: `"graphql"` (default), `"rest"`, or `"grpc"`                                                                                                         |
+| `grpc_endpoint` | No       | gRPC target `host:port`. The server's gRPC listener runs on a separate port (default `9091`), not the HTTP URL's port. Only used when `protocol="grpc"`.        |
 
-**Sync:**
+### Protocol option
+
+The `protocol` parameter selects which transport the SDK uses:
+
+- `"graphql"` (default) — sends requests to the `/graphql` endpoint
+- `"rest"` — uses the REST API (`/api/*`)
+- `"grpc"` — uses the gRPC endpoint (requires `authorizer-py[grpc]` and the server running >= v2.3.0)
+
+**Sync client:**
 
 ```python
 from authorizer import AuthorizerClient
@@ -32,8 +45,11 @@ from authorizer import AuthorizerClient
 client = AuthorizerClient(
     client_id="YOUR_CLIENT_ID",
     authorizer_url="https://your-instance.authorizer.dev",
+    # optional — 'graphql' (default), 'rest', or 'grpc'
+    protocol="graphql",
 )
-# use as a context manager to auto-close the HTTP session
+
+# Use as a context manager to auto-close the HTTP session
 with AuthorizerClient(
     client_id="YOUR_CLIENT_ID",
     authorizer_url="https://your-instance.authorizer.dev",
@@ -41,7 +57,7 @@ with AuthorizerClient(
     ...
 ```
 
-**Async:**
+**Async client:**
 
 ```python
 from authorizer import AsyncAuthorizerClient
@@ -70,19 +86,30 @@ with AuthorizerClient(
     print("access_token:", token.access_token)
 ```
 
-> **Note (Authorizer >= v2.3.0):** the server's CSRF guard requires an `Origin`
-> header on state-changing requests. The client sends the Authorizer server's
-> own origin by default, which always passes. If your instance restricts
-> `ALLOWED_ORIGINS`, pass your app's origin instead via `extra_headers`:
-> `{"Origin": "https://your-app.com"}`.
+> **Note (Authorizer >= v2.3.0):** the server's CSRF guard requires an `Origin` header on state-changing requests. The client sends the Authorizer server's own origin by default, which always passes. If your instance restricts `ALLOWED_ORIGINS`, pass your app's origin instead via `extra_headers`: `{"Origin": "https://your-app.com"}`.
+
+## gRPC transport
+
+Set `protocol="grpc"` to call the server over gRPC. The server's gRPC listener runs on a separate port (default `9091`). When `grpc_endpoint` is unset, the host is taken from `authorizer_url` and port `9091` is used; pass `grpc_endpoint` to dial a custom target:
+
+```python
+from authorizer import AuthorizerClient
+
+client = AuthorizerClient(
+    client_id="YOUR_CLIENT_ID",
+    authorizer_url="https://your-instance.authorizer.dev",
+    protocol="grpc",
+    grpc_endpoint="your-instance.authorizer.dev:9091",  # optional; defaults to host:9091
+)
+```
+
+## Admin API
+
+The SDK exposes admin methods for server-side use cases (user management, session listing, etc.). Admin methods require the admin secret, which you should pass via `extra_headers` or by using the admin client directly. See the [admin API docs](https://docs.authorizer.dev/core/admin-api) for the full list of operations.
 
 ## Fine-grained authorization (FGA)
 
-Authorizer supports OpenFGA-style relationship-based access control. The subject
-of a permission check defaults to the authenticated caller — it is pinned
-server-side from the `Authorization` header you supply. The optional `user`
-field on `CheckPermissionsRequest` / `ListPermissionsRequest` is honored only
-for super-admins or when the value matches the caller's own identity.
+Authorizer supports OpenFGA-style relationship-based access control. The subject of a permission check defaults to the authenticated caller — it is pinned server-side from the `Authorization` header you supply. The optional `user` field on `CheckPermissionsRequest` / `ListPermissionsRequest` is honored only for super-admins or when the value matches the caller's own identity.
 
 ```python
 from authorizer import (
@@ -117,31 +144,16 @@ print("can view:", accessible.objects)
 client.close()
 ```
 
-## gRPC transport
-
-Set `protocol="grpc"` to call the server over gRPC. This requires the optional
-gRPC dependencies:
-
-```bash
-pip install 'authorizer-py[grpc]'
-```
-
-The server's gRPC listener runs on a **separate port** (default `9091`), not the
-HTTP URL's port (`8080`). When `grpc_endpoint` is unset, the host is taken from
-`authorizer_url` and port `9091` is used; pass `grpc_endpoint` to dial a custom
-target explicitly:
-
-```python
-from authorizer import AuthorizerClient
-
-client = AuthorizerClient(
-    client_id="YOUR_CLIENT_ID",
-    authorizer_url="https://your-instance.authorizer.dev",
-    protocol="grpc",
-    grpc_endpoint="your-instance.authorizer.dev:9091",  # optional; defaults to host:9091
-)
-```
-
 ## License
 
 Apache-2.0 — see [LICENSE](LICENSE) for details.
+
+---
+
+## Release
+
+1. Bump the version in `setup.py` / `pyproject.toml`.
+2. Tag the commit: `git tag v<version>`
+3. Push with tags: `git push origin main --tags`
+
+The GitHub Actions release workflow handles PyPI publish and GitHub Release creation automatically.
