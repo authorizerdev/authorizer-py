@@ -8,6 +8,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from .exceptions import AuthorizerError
+from .types import GRANT_TYPE_TOKEN_EXCHANGE
 
 # Supported transport protocols. ``graphql`` is the default (100% backward
 # compatible). ``rest`` maps to the public/admin proto google.api.http paths;
@@ -85,6 +86,47 @@ def build_oauth_request(
     headers: dict[str, str],
 ) -> RequestSpec:
     return RequestSpec("POST", f"{authorizer_url}{path}", headers, body)
+
+
+# Optional /oauth/token parameters, sent only when set. Covers refresh_token,
+# client_credentials (RFC 6749 §4.4), RFC 7523 client_assertion, and RFC 8693
+# token exchange (+ RFC 8707 resource).
+_TOKEN_OPTIONAL_PARAMS = (
+    "refresh_token",
+    "client_secret",
+    "scope",
+    "client_assertion",
+    "client_assertion_type",
+    "subject_token",
+    "subject_token_type",
+    "actor_token",
+    "actor_token_type",
+    "resource",
+)
+
+def build_token_body(client_id: str, req: Any) -> dict[str, str]:
+    """Build the /oauth/token form body from a GetTokenRequest.
+
+    Only set parameters are sent. The body MUST be form-encoded on the wire:
+    the server reads the RFC 8707 ``resource`` parameter from the POST form
+    (to reject repeated values), so a JSON body would drop it.
+    """
+    grant_type = req.grant_type or "authorization_code"
+    if grant_type == "refresh_token" and not (req.refresh_token and req.refresh_token.strip()):
+        raise ValueError("refresh_token is required for refresh_token grant")
+    if grant_type == GRANT_TYPE_TOKEN_EXCHANGE and not (
+        req.subject_token and req.subject_token.strip()
+    ):
+        raise ValueError("subject_token is required for token exchange grant")
+    body: dict[str, str] = {"client_id": client_id, "grant_type": grant_type}
+    if grant_type == "authorization_code":
+        body["code"] = req.code or ""
+        body["code_verifier"] = req.code_verifier or ""
+    for key in _TOKEN_OPTIONAL_PARAMS:
+        value = getattr(req, key)
+        if value:
+            body[key] = value
+    return body
 
 
 def prepare_http(

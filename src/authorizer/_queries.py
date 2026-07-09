@@ -252,3 +252,156 @@ ADMIN_FGA_EXPAND = (
     "query adminFgaExpand($data: FgaExpandInput!) "
     "{ _fga_expand(params: $data) { tree } }"
 )
+
+# --------------------------------------------------------------------------- #
+# Machine-agent-identity admin ops: clients (service accounts), trusted
+# issuers, organizations, org SSO connections, SCIM endpoints.
+# --------------------------------------------------------------------------- #
+CLIENT_FRAGMENT = "id name description allowed_scopes is_active created_at updated_at"
+TRUSTED_ISSUER_FRAGMENT = (
+    "id service_account_id name issuer_url key_source_type jwks_url expected_aud "
+    "subject_claim allowed_subjects issuer_type is_active spiffe_refresh_hint_seconds "
+    "created_at updated_at"
+)
+ORGANIZATION_FRAGMENT = "id name display_name enabled created_at updated_at"
+ORG_MEMBER_FRAGMENT = "id org_id user_id roles created_at updated_at"
+ORG_OIDC_CONNECTION_FRAGMENT = (
+    "id org_id name issuer_url sso_client_id scopes redirect_uri is_active "
+    "created_at updated_at"
+)
+ORG_SAML_CONNECTION_FRAGMENT = (
+    "id org_id name idp_entity_id idp_sso_url sp_entity_id acs_url attribute_mapping "
+    "allow_idp_initiated is_active created_at updated_at"
+)
+SCIM_ENDPOINT_FRAGMENT = "id org_id enabled created_at updated_at"
+
+ADMIN_CREATE_CLIENT = (
+    "mutation adminCreateClient($data: CreateClientRequest!) "
+    f"{{ _create_client(params: $data) {{ client {{ {CLIENT_FRAGMENT} }} client_secret }} }}"
+)
+ADMIN_UPDATE_CLIENT = (
+    "mutation adminUpdateClient($data: UpdateClientRequest!) "
+    f"{{ _update_client(params: $data) {{ {CLIENT_FRAGMENT} }} }}"
+)
+ADMIN_DELETE_CLIENT = (
+    "mutation adminDeleteClient($data: ClientRequest!) "
+    "{ _delete_client(params: $data) { message } }"
+)
+ADMIN_ROTATE_CLIENT_SECRET = (
+    "mutation adminRotateClientSecret($data: ClientRequest!) "
+    f"{{ _rotate_client_secret(params: $data) "
+    f"{{ client {{ {CLIENT_FRAGMENT} }} client_secret }} }}"
+)
+ADMIN_GET_CLIENT = (
+    "query adminClient($data: ClientRequest!) "
+    f"{{ _client(params: $data) {{ {CLIENT_FRAGMENT} }} }}"
+)
+ADMIN_CLIENTS = (
+    "query adminClients($data: ListClientsRequest) "
+    f"{{ _clients(params: $data) {{ {PAGINATION_FRAGMENT} clients {{ {CLIENT_FRAGMENT} }} }} }}"
+)
+ADMIN_ADD_TRUSTED_ISSUER = (
+    "mutation adminAddTrustedIssuer($data: AddTrustedIssuerRequest!) "
+    f"{{ _add_trusted_issuer(params: $data) {{ {TRUSTED_ISSUER_FRAGMENT} }} }}"
+)
+ADMIN_UPDATE_TRUSTED_ISSUER = (
+    "mutation adminUpdateTrustedIssuer($data: UpdateTrustedIssuerRequest!) "
+    f"{{ _update_trusted_issuer(params: $data) {{ {TRUSTED_ISSUER_FRAGMENT} }} }}"
+)
+ADMIN_DELETE_TRUSTED_ISSUER = (
+    "mutation adminDeleteTrustedIssuer($data: TrustedIssuerRequest!) "
+    "{ _delete_trusted_issuer(params: $data) { message } }"
+)
+ADMIN_GET_TRUSTED_ISSUER = (
+    "query adminTrustedIssuer($data: TrustedIssuerRequest!) "
+    f"{{ _trusted_issuer(params: $data) {{ {TRUSTED_ISSUER_FRAGMENT} }} }}"
+)
+ADMIN_TRUSTED_ISSUERS = (
+    "query adminTrustedIssuers($data: ListTrustedIssuersRequest) "
+    f"{{ _trusted_issuers(params: $data) {{ {PAGINATION_FRAGMENT} "
+    f"trusted_issuers {{ {TRUSTED_ISSUER_FRAGMENT} }} }} }}"
+)
+ADMIN_CREATE_ORGANIZATION = (
+    "mutation adminCreateOrganization($data: CreateOrganizationRequest!) "
+    f"{{ _create_organization(params: $data) {{ {ORGANIZATION_FRAGMENT} }} }}"
+)
+ADMIN_UPDATE_ORGANIZATION = (
+    "mutation adminUpdateOrganization($data: UpdateOrganizationRequest!) "
+    f"{{ _update_organization(params: $data) {{ {ORGANIZATION_FRAGMENT} }} }}"
+)
+ADMIN_DELETE_ORGANIZATION = (
+    "mutation adminDeleteOrganization($data: OrganizationRequest!) "
+    "{ _delete_organization(params: $data) { message } }"
+)
+ADMIN_ADD_ORG_MEMBER = (
+    "mutation adminAddOrgMember($data: AddOrgMemberRequest!) "
+    f"{{ _add_org_member(params: $data) {{ {ORG_MEMBER_FRAGMENT} }} }}"
+)
+ADMIN_REMOVE_ORG_MEMBER = (
+    "mutation adminRemoveOrgMember($data: RemoveOrgMemberRequest!) "
+    "{ _remove_org_member(params: $data) { message } }"
+)
+ADMIN_GET_ORGANIZATION = (
+    "query adminOrganization($data: OrganizationRequest!) "
+    f"{{ _organization(params: $data) {{ {ORGANIZATION_FRAGMENT} }} }}"
+)
+ADMIN_ORGANIZATIONS = (
+    "query adminOrganizations($data: ListOrganizationsRequest) "
+    f"{{ _organizations(params: $data) {{ {PAGINATION_FRAGMENT} "
+    f"organizations {{ {ORGANIZATION_FRAGMENT} }} }} }}"
+)
+ADMIN_ORG_MEMBERS = (
+    "query adminOrgMembers($data: ListOrgMembersRequest!) "
+    f"{{ _org_members(params: $data) {{ {PAGINATION_FRAGMENT} "
+    f"org_members {{ {ORG_MEMBER_FRAGMENT} }} }} }}"
+)
+ADMIN_CREATE_ORG_OIDC_CONNECTION = (
+    "mutation adminCreateOrgOIDCConnection($data: CreateOrgOIDCConnectionRequest!) "
+    f"{{ _create_org_oidc_connection(params: $data) {{ {ORG_OIDC_CONNECTION_FRAGMENT} }} }}"
+)
+ADMIN_UPDATE_ORG_OIDC_CONNECTION = (
+    "mutation adminUpdateOrgOIDCConnection($data: UpdateOrgOIDCConnectionRequest!) "
+    f"{{ _update_org_oidc_connection(params: $data) {{ {ORG_OIDC_CONNECTION_FRAGMENT} }} }}"
+)
+ADMIN_DELETE_ORG_OIDC_CONNECTION = (
+    "mutation adminDeleteOrgOIDCConnection($data: OrgOIDCConnectionRequest!) "
+    "{ _delete_org_oidc_connection(params: $data) { message } }"
+)
+ADMIN_GET_ORG_OIDC_CONNECTION = (
+    "query adminOrgOIDCConnection($data: OrgOIDCConnectionRequest!) "
+    f"{{ _org_oidc_connection(params: $data) {{ {ORG_OIDC_CONNECTION_FRAGMENT} }} }}"
+)
+ADMIN_CREATE_ORG_SAML_CONNECTION = (
+    "mutation adminCreateOrgSAMLConnection($data: CreateOrgSAMLConnectionRequest!) "
+    f"{{ _create_org_saml_connection(params: $data) {{ {ORG_SAML_CONNECTION_FRAGMENT} }} }}"
+)
+ADMIN_UPDATE_ORG_SAML_CONNECTION = (
+    "mutation adminUpdateOrgSAMLConnection($data: UpdateOrgSAMLConnectionRequest!) "
+    f"{{ _update_org_saml_connection(params: $data) {{ {ORG_SAML_CONNECTION_FRAGMENT} }} }}"
+)
+ADMIN_DELETE_ORG_SAML_CONNECTION = (
+    "mutation adminDeleteOrgSAMLConnection($data: OrgSAMLConnectionRequest!) "
+    "{ _delete_org_saml_connection(params: $data) { message } }"
+)
+ADMIN_GET_ORG_SAML_CONNECTION = (
+    "query adminOrgSAMLConnection($data: OrgSAMLConnectionRequest!) "
+    f"{{ _org_saml_connection(params: $data) {{ {ORG_SAML_CONNECTION_FRAGMENT} }} }}"
+)
+ADMIN_CREATE_SCIM_ENDPOINT = (
+    "mutation adminCreateScimEndpoint($data: CreateScimEndpointRequest!) "
+    f"{{ _create_scim_endpoint(params: $data) "
+    f"{{ scim_endpoint {{ {SCIM_ENDPOINT_FRAGMENT} }} token }} }}"
+)
+ADMIN_ROTATE_SCIM_TOKEN = (
+    "mutation adminRotateScimToken($data: ScimEndpointRequest!) "
+    f"{{ _rotate_scim_token(params: $data) "
+    f"{{ scim_endpoint {{ {SCIM_ENDPOINT_FRAGMENT} }} token }} }}"
+)
+ADMIN_DELETE_SCIM_ENDPOINT = (
+    "mutation adminDeleteScimEndpoint($data: ScimEndpointRequest!) "
+    "{ _delete_scim_endpoint(params: $data) { message } }"
+)
+ADMIN_GET_SCIM_ENDPOINT = (
+    "query adminScimEndpoint($data: ScimEndpointRequest!) "
+    f"{{ _scim_endpoint(params: $data) {{ {SCIM_ENDPOINT_FRAGMENT} }} }}"
+)

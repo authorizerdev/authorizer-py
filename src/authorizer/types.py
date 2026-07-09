@@ -7,6 +7,23 @@ from dataclasses import dataclass, field, fields
 from enum import Enum
 from typing import Any
 
+# --------------------------------------------------------------------------- #
+# OAuth2 grant-type identifiers accepted by /oauth/token.
+# client_credentials (RFC 6749 §4.4) and token-exchange (RFC 8693) are
+# machine/service flows — server-side only.
+# --------------------------------------------------------------------------- #
+GRANT_TYPE_AUTHORIZATION_CODE = "authorization_code"
+GRANT_TYPE_REFRESH_TOKEN = "refresh_token"
+GRANT_TYPE_CLIENT_CREDENTIALS = "client_credentials"
+GRANT_TYPE_TOKEN_EXCHANGE = "urn:ietf:params:oauth:grant-type:token-exchange"
+
+# RFC 8693 token-type URNs for subject_token_type / actor_token_type.
+TOKEN_TYPE_ACCESS_TOKEN = "urn:ietf:params:oauth:token-type:access_token"
+TOKEN_TYPE_JWT = "urn:ietf:params:oauth:token-type:jwt"
+
+# RFC 7523 JWT-bearer client_assertion_type (secretless client auth).
+CLIENT_ASSERTION_TYPE_JWT_BEARER = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+
 
 # --------------------------------------------------------------------------- #
 # Enums
@@ -204,6 +221,29 @@ class GetTokenRequest(_Request):
     grant_type: str | None = None
     refresh_token: str | None = None
     code_verifier: str | None = None
+    # -- client_credentials (RFC 6749 §4.4) — SERVER-SIDE ONLY -------------- #
+    # client_secret authenticates the service account. Never expose it to
+    # untrusted code.
+    client_secret: str | None = None
+    # scope is the space-delimited OAuth2 scope parameter (RFC 6749 §3.3);
+    # omitted = the service account's full allowed scope set.
+    scope: str | None = None
+    # client_assertion / client_assertion_type carry the RFC 7523 JWT-bearer
+    # client credential — the secretless workload-identity path (K8s SA
+    # tokens, SPIFFE JWT-SVIDs, cloud OIDC tokens).
+    client_assertion: str | None = None
+    client_assertion_type: str | None = None
+    # -- RFC 8693 token exchange (delegation) — SERVER-SIDE ONLY ------------ #
+    # subject_token carries the authority being exercised (the user's token);
+    # actor_token carries the acting agent's token. See the TOKEN_TYPE_*
+    # constants for the *_token_type URNs.
+    subject_token: str | None = None
+    subject_token_type: str | None = None
+    actor_token: str | None = None
+    actor_token_type: str | None = None
+    # resource is the RFC 8707 resource indicator the issued token is
+    # audience-bound to (exactly one is required for token exchange).
+    resource: str | None = None
 
 
 @dataclass
@@ -371,8 +411,15 @@ class MetaData:
 class GetTokenResponse:
     access_token: str = ""
     expires_in: int = 0
+    # id_token is only issued on user grants (authorization_code /
+    # refresh_token) — absent for client_credentials and token exchange.
     id_token: str = ""
     refresh_token: str | None = None
+    token_type: str | None = None
+    # scope / issued_token_type are returned by the client_credentials and
+    # token-exchange grants (RFC 6749 §5.1 / RFC 8693 §2.2).
+    scope: str | None = None
+    issued_token_type: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> GetTokenResponse:
@@ -602,6 +649,209 @@ class FgaListUsersRequest(_Request):
 class FgaExpandRequest(_Request):
     relation: str
     object: str
+
+
+# -- clients (service accounts / machine identities) ------------------------ #
+@dataclass
+class CreateClientRequest(_Request):
+    name: str
+    # allowed_scopes must contain at least one non-empty scope.
+    allowed_scopes: list[str]
+    description: str | None = None
+
+
+@dataclass
+class UpdateClientRequest(_Request):
+    id: str
+    name: str | None = None
+    description: str | None = None
+    allowed_scopes: list[str] | None = None
+    is_active: bool | None = None
+
+
+@dataclass
+class ClientRequest(_Request):
+    id: str
+
+
+@dataclass
+class ListClientsRequest(_Request):
+    pagination: PaginatedRequest | None = None
+
+
+# -- trusted issuers --------------------------------------------------------- #
+@dataclass
+class AddTrustedIssuerRequest(_Request):
+    service_account_id: str
+    name: str
+    issuer_url: str
+    # key_source_type: "oidc_discovery" | "static_jwks_url" | "spiffe_bundle_endpoint"
+    key_source_type: str
+    expected_aud: str
+    # issuer_type: "kubernetes_sa" | "spiffe_jwt" | "oidc" | "cloud_oidc"
+    issuer_type: str
+    jwks_url: str | None = None
+    # subject_claim defaults to "sub" if omitted.
+    subject_claim: str | None = None
+    # allowed_subjects: comma-separated exact subject allow-list. Empty = deny-all.
+    allowed_subjects: str | None = None
+    spiffe_refresh_hint_seconds: int | None = None
+
+
+@dataclass
+class UpdateTrustedIssuerRequest(_Request):
+    id: str
+    name: str | None = None
+    jwks_url: str | None = None
+    expected_aud: str | None = None
+    allowed_subjects: str | None = None
+    is_active: bool | None = None
+    spiffe_refresh_hint_seconds: int | None = None
+
+
+@dataclass
+class TrustedIssuerRequest(_Request):
+    id: str
+
+
+@dataclass
+class ListTrustedIssuersRequest(_Request):
+    service_account_id: str | None = None
+    pagination: PaginatedRequest | None = None
+
+
+# -- organizations ------------------------------------------------------------ #
+@dataclass
+class CreateOrganizationRequest(_Request):
+    # name must be a unique, URL-safe slug.
+    name: str
+    display_name: str | None = None
+
+
+@dataclass
+class UpdateOrganizationRequest(_Request):
+    id: str
+    name: str | None = None
+    display_name: str | None = None
+    enabled: bool | None = None
+
+
+@dataclass
+class OrganizationRequest(_Request):
+    id: str
+
+
+@dataclass
+class ListOrganizationsRequest(_Request):
+    pagination: PaginatedRequest | None = None
+
+
+@dataclass
+class AddOrgMemberRequest(_Request):
+    org_id: str
+    user_id: str
+    # roles defaults to an empty set when omitted.
+    roles: list[str] | None = None
+
+
+@dataclass
+class RemoveOrgMemberRequest(_Request):
+    org_id: str
+    user_id: str
+
+
+@dataclass
+class ListOrgMembersRequest(_Request):
+    org_id: str
+    pagination: PaginatedRequest | None = None
+
+
+# -- org SSO connections ------------------------------------------------------ #
+@dataclass
+class CreateOrgOIDCConnectionRequest(_Request):
+    org_id: str
+    name: str
+    # issuer_url: the upstream IdP issuer (its OIDC discovery base).
+    issuer_url: str
+    # client_id / client_secret: the credentials Authorizer holds AT the
+    # upstream IdP. The secret is stored encrypted and never returned.
+    client_id: str
+    client_secret: str
+    # scopes: space-separated. Defaults to "openid profile email" when omitted.
+    scopes: str | None = None
+    redirect_uri: str | None = None
+
+
+@dataclass
+class UpdateOrgOIDCConnectionRequest(_Request):
+    id: str
+    name: str | None = None
+    issuer_url: str | None = None
+    client_id: str | None = None
+    # Supplying client_secret rotates it; omitting leaves the stored secret intact.
+    client_secret: str | None = None
+    scopes: str | None = None
+    redirect_uri: str | None = None
+    is_active: bool | None = None
+
+
+@dataclass
+class OrgOIDCConnectionRequest(_Request):
+    # Look up by connection id OR by org_id (supply exactly one).
+    id: str | None = None
+    org_id: str | None = None
+
+
+@dataclass
+class CreateOrgSAMLConnectionRequest(_Request):
+    org_id: str
+    name: str
+    # idp_entity_id: the upstream IdP entity ID (the assertion Issuer).
+    idp_entity_id: str
+    # idp_sso_url: the IdP Single Sign-On endpoint (HTTP-Redirect binding).
+    idp_sso_url: str
+    # idp_certificate: the IdP X.509 signing certificate (PEM).
+    idp_certificate: str
+    # sp_entity_id / acs_url: override the host-derived SP identity.
+    sp_entity_id: str | None = None
+    acs_url: str | None = None
+    # attribute_mapping: JSON, e.g. {"email":"email","given_name":"firstName"}.
+    attribute_mapping: str | None = None
+    # allow_idp_initiated: default false (SP-initiated only).
+    allow_idp_initiated: bool | None = None
+
+
+@dataclass
+class UpdateOrgSAMLConnectionRequest(_Request):
+    id: str
+    name: str | None = None
+    idp_entity_id: str | None = None
+    idp_sso_url: str | None = None
+    # Supplying idp_certificate replaces it; omitting leaves the stored cert intact.
+    idp_certificate: str | None = None
+    sp_entity_id: str | None = None
+    acs_url: str | None = None
+    attribute_mapping: str | None = None
+    allow_idp_initiated: bool | None = None
+    is_active: bool | None = None
+
+
+@dataclass
+class OrgSAMLConnectionRequest(_Request):
+    # Look up by connection id OR by org_id (supply exactly one).
+    id: str | None = None
+    org_id: str | None = None
+
+
+# -- SCIM endpoints (one per org, keyed by org_id) ---------------------------- #
+@dataclass
+class CreateScimEndpointRequest(_Request):
+    org_id: str
+
+
+@dataclass
+class ScimEndpointRequest(_Request):
+    org_id: str
 
 
 # --------------------------------------------------------------------------- #
@@ -897,3 +1147,224 @@ class FgaExpandResponse:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> FgaExpandResponse:
         return cls(tree=str(data.get("tree", "")))
+
+
+# Client is a registered OAuth client / service account. client_secret is
+# NEVER part of this shape — it is returned exactly once in
+# CreateClientResponse (creation and rotation) and never again.
+@dataclass
+class Client:
+    id: str = ""
+    name: str = ""
+    description: str | None = None
+    allowed_scopes: list[str] = field(default_factory=list)
+    is_active: bool = False
+    created_at: int | None = None
+    updated_at: int | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Client:
+        return cls(**_known(cls, data))
+
+
+@dataclass
+class CreateClientResponse:
+    client: Client = field(default_factory=Client)
+    # client_secret is returned ONCE at creation and ONCE at rotation. Store
+    # it securely; it can never be retrieved again.
+    client_secret: str = ""
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> CreateClientResponse:
+        raw = data.get("client")
+        return cls(
+            client=Client.from_dict(raw) if isinstance(raw, dict) else Client(),
+            client_secret=str(data.get("client_secret", "")),
+        )
+
+
+@dataclass
+class ClientsResponse:
+    clients: list[Client] = field(default_factory=list)
+    pagination: Pagination = field(default_factory=Pagination)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ClientsResponse:
+        raw = data.get("clients")
+        items = raw if isinstance(raw, list) else []
+        return cls(
+            clients=[Client.from_dict(c) for c in items if isinstance(c, dict)],
+            pagination=_pagination(data),
+        )
+
+
+@dataclass
+class TrustedIssuer:
+    id: str = ""
+    service_account_id: str = ""
+    name: str = ""
+    issuer_url: str = ""
+    key_source_type: str = ""
+    jwks_url: str | None = None
+    expected_aud: str = ""
+    subject_claim: str = ""
+    # allowed_subjects: comma-separated exact subject allow-list. Empty = deny-all.
+    allowed_subjects: str | None = None
+    issuer_type: str = ""
+    is_active: bool = False
+    spiffe_refresh_hint_seconds: int | None = None
+    created_at: int | None = None
+    updated_at: int | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> TrustedIssuer:
+        return cls(**_known(cls, data))
+
+
+@dataclass
+class TrustedIssuersResponse:
+    trusted_issuers: list[TrustedIssuer] = field(default_factory=list)
+    pagination: Pagination = field(default_factory=Pagination)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> TrustedIssuersResponse:
+        raw = data.get("trusted_issuers")
+        items = raw if isinstance(raw, list) else []
+        return cls(
+            trusted_issuers=[TrustedIssuer.from_dict(x) for x in items if isinstance(x, dict)],
+            pagination=_pagination(data),
+        )
+
+
+@dataclass
+class Organization:
+    id: str = ""
+    # name is a unique, URL-safe slug identifying the organization.
+    name: str = ""
+    display_name: str | None = None
+    enabled: bool = False
+    created_at: int | None = None
+    updated_at: int | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Organization:
+        return cls(**_known(cls, data))
+
+
+@dataclass
+class OrganizationsResponse:
+    organizations: list[Organization] = field(default_factory=list)
+    pagination: Pagination = field(default_factory=Pagination)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> OrganizationsResponse:
+        raw = data.get("organizations")
+        items = raw if isinstance(raw, list) else []
+        return cls(
+            organizations=[Organization.from_dict(o) for o in items if isinstance(o, dict)],
+            pagination=_pagination(data),
+        )
+
+
+@dataclass
+class OrgMember:
+    id: str = ""
+    org_id: str = ""
+    user_id: str = ""
+    # roles is the set of per-organization roles granted to this member.
+    roles: list[str] = field(default_factory=list)
+    created_at: int | None = None
+    updated_at: int | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> OrgMember:
+        return cls(**_known(cls, data))
+
+
+@dataclass
+class OrgMembersResponse:
+    org_members: list[OrgMember] = field(default_factory=list)
+    pagination: Pagination = field(default_factory=Pagination)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> OrgMembersResponse:
+        raw = data.get("org_members")
+        items = raw if isinstance(raw, list) else []
+        return cls(
+            org_members=[OrgMember.from_dict(m) for m in items if isinstance(m, dict)],
+            pagination=_pagination(data),
+        )
+
+
+# OrgOIDCConnection: per-org upstream OIDC IdP brokered by Authorizer as a
+# Relying Party. The upstream client_secret is NEVER projected here.
+@dataclass
+class OrgOIDCConnection:
+    id: str = ""
+    org_id: str = ""
+    name: str = ""
+    issuer_url: str = ""
+    # sso_client_id: the client_id Authorizer uses AT the upstream IdP.
+    sso_client_id: str = ""
+    scopes: str | None = None
+    redirect_uri: str | None = None
+    is_active: bool = False
+    created_at: int | None = None
+    updated_at: int | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> OrgOIDCConnection:
+        return cls(**_known(cls, data))
+
+
+# OrgSAMLConnection: per-org upstream SAML 2.0 IdP for which Authorizer acts
+# as the Service Provider. The IdP signing certificate is never projected back.
+@dataclass
+class OrgSAMLConnection:
+    id: str = ""
+    org_id: str = ""
+    name: str = ""
+    idp_entity_id: str = ""
+    idp_sso_url: str | None = None
+    sp_entity_id: str | None = None
+    acs_url: str | None = None
+    attribute_mapping: str | None = None
+    allow_idp_initiated: bool = False
+    is_active: bool = False
+    created_at: int | None = None
+    updated_at: int | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> OrgSAMLConnection:
+        return cls(**_known(cls, data))
+
+
+# ScimEndpoint: per-org inbound SCIM 2.0 connection. The bearer token is NEVER
+# returned here; it is returned exactly once in CreateScimEndpointResponse.
+@dataclass
+class ScimEndpoint:
+    id: str = ""
+    org_id: str = ""
+    enabled: bool = False
+    created_at: int | None = None
+    updated_at: int | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ScimEndpoint:
+        return cls(**_known(cls, data))
+
+
+@dataclass
+class CreateScimEndpointResponse:
+    scim_endpoint: ScimEndpoint = field(default_factory=ScimEndpoint)
+    # token is the bearer credential the org's IdP presents at /scim/v2/. It
+    # is returned ONCE at creation and ONCE at rotation. Store it securely.
+    token: str = ""
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> CreateScimEndpointResponse:
+        raw = data.get("scim_endpoint")
+        return cls(
+            scim_endpoint=ScimEndpoint.from_dict(raw) if isinstance(raw, dict) else ScimEndpoint(),
+            token=str(data.get("token", "")),
+        )

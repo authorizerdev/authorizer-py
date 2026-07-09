@@ -278,3 +278,204 @@ class AsyncAuthorizerAdminClient:
         """Destructive: deletes the entire fine-grained authorization store."""
         res = await self._invoke("fga_reset", d.ADMIN["fga_reset"], None)
         return t.GenericResponse.from_dict(res or {})
+
+    # -- clients (service accounts / machine identities) ------------------- #
+    async def create_client(self, req: t.CreateClientRequest) -> t.CreateClientResponse:
+        """The returned client_secret is shown ONCE and can never be retrieved again."""
+        res = await self._invoke("create_client", d.ADMIN["create_client"], req.to_dict())
+        return t.CreateClientResponse.from_dict(res or {})
+
+    async def update_client(self, req: t.UpdateClientRequest) -> t.Client:
+        res = await self._invoke("update_client", d.ADMIN["update_client"], req.to_dict())
+        return t.Client.from_dict(res or {})
+
+    async def delete_client(self, req: t.ClientRequest) -> t.GenericResponse:
+        """Destructive: permanently deletes the client; its tokens stop resolving."""
+        res = await self._invoke("delete_client", d.ADMIN["delete_client"], req.to_dict())
+        return t.GenericResponse.from_dict(res or {})
+
+    async def rotate_client_secret(self, req: t.ClientRequest) -> t.CreateClientResponse:
+        """Destructive: invalidates the old secret; the new one is shown ONCE."""
+        res = await self._invoke(
+            "rotate_client_secret", d.ADMIN["rotate_client_secret"], req.to_dict()
+        )
+        return t.CreateClientResponse.from_dict(res or {})
+
+    async def get_client(self, req: t.ClientRequest) -> t.Client:
+        res = await self._invoke("get_client", d.ADMIN["get_client"], req.to_dict())
+        return t.Client.from_dict(res or {})
+
+    async def clients(self, req: t.ListClientsRequest | None = None) -> t.ClientsResponse:
+        res = await self._invoke("clients", d.ADMIN["clients"], req.to_dict() if req else None)
+        return t.ClientsResponse.from_dict(res or {})
+
+    # -- trusted issuers ---------------------------------------------------- #
+    async def add_trusted_issuer(self, req: t.AddTrustedIssuerRequest) -> t.TrustedIssuer:
+        res = await self._invoke(
+            "add_trusted_issuer", d.ADMIN["add_trusted_issuer"], req.to_dict()
+        )
+        return t.TrustedIssuer.from_dict(res or {})
+
+    async def update_trusted_issuer(self, req: t.UpdateTrustedIssuerRequest) -> t.TrustedIssuer:
+        res = await self._invoke(
+            "update_trusted_issuer", d.ADMIN["update_trusted_issuer"], req.to_dict()
+        )
+        return t.TrustedIssuer.from_dict(res or {})
+
+    async def delete_trusted_issuer(self, req: t.TrustedIssuerRequest) -> t.GenericResponse:
+        """Destructive: tokens from this issuer stop authenticating."""
+        res = await self._invoke(
+            "delete_trusted_issuer", d.ADMIN["delete_trusted_issuer"], req.to_dict()
+        )
+        return t.GenericResponse.from_dict(res or {})
+
+    async def get_trusted_issuer(self, req: t.TrustedIssuerRequest) -> t.TrustedIssuer:
+        res = await self._invoke(
+            "get_trusted_issuer", d.ADMIN["get_trusted_issuer"], req.to_dict()
+        )
+        return t.TrustedIssuer.from_dict(res or {})
+
+    async def trusted_issuers(
+        self, req: t.ListTrustedIssuersRequest | None = None
+    ) -> t.TrustedIssuersResponse:
+        res = await self._invoke(
+            "trusted_issuers", d.ADMIN["trusted_issuers"], req.to_dict() if req else None
+        )
+        return t.TrustedIssuersResponse.from_dict(res or {})
+
+    # -- organizations ------------------------------------------------------ #
+    async def create_organization(self, req: t.CreateOrganizationRequest) -> t.Organization:
+        res = await self._invoke(
+            "create_organization", d.ADMIN["create_organization"], req.to_dict()
+        )
+        return t.Organization.from_dict(res or {})
+
+    async def update_organization(self, req: t.UpdateOrganizationRequest) -> t.Organization:
+        res = await self._invoke(
+            "update_organization", d.ADMIN["update_organization"], req.to_dict()
+        )
+        return t.Organization.from_dict(res or {})
+
+    async def delete_organization(self, req: t.OrganizationRequest) -> t.GenericResponse:
+        """Destructive: permanently deletes the organization."""
+        res = await self._invoke(
+            "delete_organization", d.ADMIN["delete_organization"], req.to_dict()
+        )
+        return t.GenericResponse.from_dict(res or {})
+
+    async def add_org_member(self, req: t.AddOrgMemberRequest) -> t.OrgMember:
+        res = await self._invoke("add_org_member", d.ADMIN["add_org_member"], req.to_dict())
+        return t.OrgMember.from_dict(res or {})
+
+    async def remove_org_member(self, req: t.RemoveOrgMemberRequest) -> t.GenericResponse:
+        res = await self._invoke("remove_org_member", d.ADMIN["remove_org_member"], req.to_dict())
+        return t.GenericResponse.from_dict(res or {})
+
+    async def get_organization(self, req: t.OrganizationRequest) -> t.Organization:
+        res = await self._invoke("get_organization", d.ADMIN["get_organization"], req.to_dict())
+        return t.Organization.from_dict(res or {})
+
+    async def organizations(
+        self, req: t.ListOrganizationsRequest | None = None
+    ) -> t.OrganizationsResponse:
+        res = await self._invoke(
+            "organizations", d.ADMIN["organizations"], req.to_dict() if req else None
+        )
+        return t.OrganizationsResponse.from_dict(res or {})
+
+    async def org_members(self, req: t.ListOrgMembersRequest) -> t.OrgMembersResponse:
+        res = await self._invoke("org_members", d.ADMIN["org_members"], req.to_dict())
+        return t.OrgMembersResponse.from_dict(res or {})
+
+    # -- org SSO connections ------------------------------------------------ #
+    async def create_org_oidc_connection(
+        self, req: t.CreateOrgOIDCConnectionRequest
+    ) -> t.OrgOIDCConnection:
+        res = await self._invoke(
+            "create_org_oidc_connection", d.ADMIN["create_org_oidc_connection"], req.to_dict()
+        )
+        return t.OrgOIDCConnection.from_dict(res or {})
+
+    async def update_org_oidc_connection(
+        self, req: t.UpdateOrgOIDCConnectionRequest
+    ) -> t.OrgOIDCConnection:
+        res = await self._invoke(
+            "update_org_oidc_connection", d.ADMIN["update_org_oidc_connection"], req.to_dict()
+        )
+        return t.OrgOIDCConnection.from_dict(res or {})
+
+    async def delete_org_oidc_connection(
+        self, req: t.OrgOIDCConnectionRequest
+    ) -> t.GenericResponse:
+        """Destructive: org members lose this OIDC SSO path."""
+        res = await self._invoke(
+            "delete_org_oidc_connection", d.ADMIN["delete_org_oidc_connection"], req.to_dict()
+        )
+        return t.GenericResponse.from_dict(res or {})
+
+    async def get_org_oidc_connection(
+        self, req: t.OrgOIDCConnectionRequest
+    ) -> t.OrgOIDCConnection:
+        res = await self._invoke(
+            "get_org_oidc_connection", d.ADMIN["get_org_oidc_connection"], req.to_dict()
+        )
+        return t.OrgOIDCConnection.from_dict(res or {})
+
+    async def create_org_saml_connection(
+        self, req: t.CreateOrgSAMLConnectionRequest
+    ) -> t.OrgSAMLConnection:
+        res = await self._invoke(
+            "create_org_saml_connection", d.ADMIN["create_org_saml_connection"], req.to_dict()
+        )
+        return t.OrgSAMLConnection.from_dict(res or {})
+
+    async def update_org_saml_connection(
+        self, req: t.UpdateOrgSAMLConnectionRequest
+    ) -> t.OrgSAMLConnection:
+        res = await self._invoke(
+            "update_org_saml_connection", d.ADMIN["update_org_saml_connection"], req.to_dict()
+        )
+        return t.OrgSAMLConnection.from_dict(res or {})
+
+    async def delete_org_saml_connection(
+        self, req: t.OrgSAMLConnectionRequest
+    ) -> t.GenericResponse:
+        """Destructive: org members lose this SAML SSO path."""
+        res = await self._invoke(
+            "delete_org_saml_connection", d.ADMIN["delete_org_saml_connection"], req.to_dict()
+        )
+        return t.GenericResponse.from_dict(res or {})
+
+    async def get_org_saml_connection(
+        self, req: t.OrgSAMLConnectionRequest
+    ) -> t.OrgSAMLConnection:
+        res = await self._invoke(
+            "get_org_saml_connection", d.ADMIN["get_org_saml_connection"], req.to_dict()
+        )
+        return t.OrgSAMLConnection.from_dict(res or {})
+
+    # -- SCIM endpoints ------------------------------------------------------ #
+    async def create_scim_endpoint(
+        self, req: t.CreateScimEndpointRequest
+    ) -> t.CreateScimEndpointResponse:
+        """The returned bearer token is shown ONCE and can never be retrieved again."""
+        res = await self._invoke(
+            "create_scim_endpoint", d.ADMIN["create_scim_endpoint"], req.to_dict()
+        )
+        return t.CreateScimEndpointResponse.from_dict(res or {})
+
+    async def rotate_scim_token(self, req: t.ScimEndpointRequest) -> t.CreateScimEndpointResponse:
+        """Destructive: invalidates the old token; the new one is shown ONCE."""
+        res = await self._invoke("rotate_scim_token", d.ADMIN["rotate_scim_token"], req.to_dict())
+        return t.CreateScimEndpointResponse.from_dict(res or {})
+
+    async def delete_scim_endpoint(self, req: t.ScimEndpointRequest) -> t.GenericResponse:
+        """Destructive: the org's SCIM provisioning stops working."""
+        res = await self._invoke(
+            "delete_scim_endpoint", d.ADMIN["delete_scim_endpoint"], req.to_dict()
+        )
+        return t.GenericResponse.from_dict(res or {})
+
+    async def get_scim_endpoint(self, req: t.ScimEndpointRequest) -> t.ScimEndpoint:
+        res = await self._invoke("get_scim_endpoint", d.ADMIN["get_scim_endpoint"], req.to_dict())
+        return t.ScimEndpoint.from_dict(res or {})

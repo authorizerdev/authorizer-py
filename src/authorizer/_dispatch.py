@@ -267,4 +267,71 @@ ADMIN: dict[str, MethodSpec] = {
     "admin_signup": MethodSpec(GQL_ONLY, q.ADMIN_SIGNUP, "_admin_signup"),
     "update_env": MethodSpec(GQL_ONLY, q.ADMIN_UPDATE_ENV, "_update_env"),
     "generate_jwt_keys": MethodSpec(GQL_ONLY, q.ADMIN_GENERATE_JWT_KEYS, "_generate_jwt_keys"),
+    # Machine-agent-identity ops. Orgs/SSO/SCIM are graphql-only on the server.
+    # Clients + trusted issuers DO have proto RPCs server-side, but the vendored
+    # stubs (src/authorizer/_grpc) predate them — rest/grpc stay off until the
+    # stubs are re-vendored, so all of these are graphql-only for now.
+    "create_client": MethodSpec(GQL_ONLY, q.ADMIN_CREATE_CLIENT, "_create_client"),
+    "update_client": MethodSpec(GQL_ONLY, q.ADMIN_UPDATE_CLIENT, "_update_client"),
+    "delete_client": MethodSpec(GQL_ONLY, q.ADMIN_DELETE_CLIENT, "_delete_client"),
+    "rotate_client_secret": MethodSpec(
+        GQL_ONLY, q.ADMIN_ROTATE_CLIENT_SECRET, "_rotate_client_secret"
+    ),
+    "get_client": MethodSpec(GQL_ONLY, q.ADMIN_GET_CLIENT, "_client"),
+    "clients": MethodSpec(GQL_ONLY, q.ADMIN_CLIENTS, "_clients"),
+    "add_trusted_issuer": MethodSpec(GQL_ONLY, q.ADMIN_ADD_TRUSTED_ISSUER, "_add_trusted_issuer"),
+    "update_trusted_issuer": MethodSpec(
+        GQL_ONLY, q.ADMIN_UPDATE_TRUSTED_ISSUER, "_update_trusted_issuer"
+    ),
+    "delete_trusted_issuer": MethodSpec(
+        GQL_ONLY, q.ADMIN_DELETE_TRUSTED_ISSUER, "_delete_trusted_issuer"
+    ),
+    "get_trusted_issuer": MethodSpec(GQL_ONLY, q.ADMIN_GET_TRUSTED_ISSUER, "_trusted_issuer"),
+    "trusted_issuers": MethodSpec(GQL_ONLY, q.ADMIN_TRUSTED_ISSUERS, "_trusted_issuers"),
+    "create_organization": MethodSpec(
+        GQL_ONLY, q.ADMIN_CREATE_ORGANIZATION, "_create_organization"
+    ),
+    "update_organization": MethodSpec(
+        GQL_ONLY, q.ADMIN_UPDATE_ORGANIZATION, "_update_organization"
+    ),
+    "delete_organization": MethodSpec(
+        GQL_ONLY, q.ADMIN_DELETE_ORGANIZATION, "_delete_organization"
+    ),
+    "add_org_member": MethodSpec(GQL_ONLY, q.ADMIN_ADD_ORG_MEMBER, "_add_org_member"),
+    "remove_org_member": MethodSpec(GQL_ONLY, q.ADMIN_REMOVE_ORG_MEMBER, "_remove_org_member"),
+    "get_organization": MethodSpec(GQL_ONLY, q.ADMIN_GET_ORGANIZATION, "_organization"),
+    "organizations": MethodSpec(GQL_ONLY, q.ADMIN_ORGANIZATIONS, "_organizations"),
+    "org_members": MethodSpec(GQL_ONLY, q.ADMIN_ORG_MEMBERS, "_org_members"),
+    "create_org_oidc_connection": MethodSpec(
+        GQL_ONLY, q.ADMIN_CREATE_ORG_OIDC_CONNECTION, "_create_org_oidc_connection"
+    ),
+    "update_org_oidc_connection": MethodSpec(
+        GQL_ONLY, q.ADMIN_UPDATE_ORG_OIDC_CONNECTION, "_update_org_oidc_connection"
+    ),
+    "delete_org_oidc_connection": MethodSpec(
+        GQL_ONLY, q.ADMIN_DELETE_ORG_OIDC_CONNECTION, "_delete_org_oidc_connection"
+    ),
+    "get_org_oidc_connection": MethodSpec(
+        GQL_ONLY, q.ADMIN_GET_ORG_OIDC_CONNECTION, "_org_oidc_connection"
+    ),
+    "create_org_saml_connection": MethodSpec(
+        GQL_ONLY, q.ADMIN_CREATE_ORG_SAML_CONNECTION, "_create_org_saml_connection"
+    ),
+    "update_org_saml_connection": MethodSpec(
+        GQL_ONLY, q.ADMIN_UPDATE_ORG_SAML_CONNECTION, "_update_org_saml_connection"
+    ),
+    "delete_org_saml_connection": MethodSpec(
+        GQL_ONLY, q.ADMIN_DELETE_ORG_SAML_CONNECTION, "_delete_org_saml_connection"
+    ),
+    "get_org_saml_connection": MethodSpec(
+        GQL_ONLY, q.ADMIN_GET_ORG_SAML_CONNECTION, "_org_saml_connection"
+    ),
+    "create_scim_endpoint": MethodSpec(
+        GQL_ONLY, q.ADMIN_CREATE_SCIM_ENDPOINT, "_create_scim_endpoint"
+    ),
+    "rotate_scim_token": MethodSpec(GQL_ONLY, q.ADMIN_ROTATE_SCIM_TOKEN, "_rotate_scim_token"),
+    "delete_scim_endpoint": MethodSpec(
+        GQL_ONLY, q.ADMIN_DELETE_SCIM_ENDPOINT, "_delete_scim_endpoint"
+    ),
+    "get_scim_endpoint": MethodSpec(GQL_ONLY, q.ADMIN_GET_SCIM_ENDPOINT, "_scim_endpoint"),
 }

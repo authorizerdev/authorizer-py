@@ -1,4 +1,4 @@
-"""Admin sync/async parity + spec coverage of all 35 admin methods."""
+"""Admin sync/async parity + spec coverage of all 66 admin methods."""
 
 from __future__ import annotations
 
@@ -43,6 +43,39 @@ ADMIN_METHODS = [
     "admin_signup",
     "update_env",
     "generate_jwt_keys",
+    # Machine-agent-identity ops (graphql-only until the vendored stubs are
+    # re-vendored; orgs/SSO/SCIM are graphql-only on the server too).
+    "create_client",
+    "update_client",
+    "delete_client",
+    "rotate_client_secret",
+    "get_client",
+    "clients",
+    "add_trusted_issuer",
+    "update_trusted_issuer",
+    "delete_trusted_issuer",
+    "get_trusted_issuer",
+    "trusted_issuers",
+    "create_organization",
+    "update_organization",
+    "delete_organization",
+    "add_org_member",
+    "remove_org_member",
+    "get_organization",
+    "organizations",
+    "org_members",
+    "create_org_oidc_connection",
+    "update_org_oidc_connection",
+    "delete_org_oidc_connection",
+    "get_org_oidc_connection",
+    "create_org_saml_connection",
+    "update_org_saml_connection",
+    "delete_org_saml_connection",
+    "get_org_saml_connection",
+    "create_scim_endpoint",
+    "rotate_scim_token",
+    "delete_scim_endpoint",
+    "get_scim_endpoint",
 ]
 
 
@@ -54,7 +87,7 @@ def test_both_admin_clients_expose_same_surface() -> None:
 
 def test_dispatch_table_covers_every_admin_method() -> None:
     assert set(d.ADMIN) == set(ADMIN_METHODS)
-    assert len(d.ADMIN) == 35
+    assert len(d.ADMIN) == 66
 
 
 def test_protocol_availability_matches_spec() -> None:
@@ -66,3 +99,6 @@ def test_protocol_availability_matches_spec() -> None:
         assert d.ADMIN[name].protocols == ("rest", "grpc")
     # full coverage
     assert d.ADMIN["users"].protocols == ("graphql", "rest", "grpc")
+    # machine-agent-identity ops are graphql-only for now
+    for name in ("create_client", "trusted_issuers", "create_organization", "get_scim_endpoint"):
+        assert d.ADMIN[name].protocols == ("graphql",)

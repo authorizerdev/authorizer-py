@@ -16,6 +16,7 @@ from ._core import (
     build_graphql_request,
     build_headers,
     build_oauth_request,
+    build_token_body,
     parse_graphql_data,
     parse_graphql_response,
     parse_oauth_response,
@@ -90,6 +91,19 @@ class AuthorizerClient:
             self._config.authorizer_url, path, body, build_headers(self._config, None)
         )
         res = self._send(spec)
+        return parse_oauth_response(res.status_code, res.content)
+
+    def _oauth_form(self, path: str, body: dict[str, str]) -> dict[str, Any]:
+        """POST an application/x-www-form-urlencoded OAuth request (RFC 6749 §4.1.3)."""
+        headers = build_headers(
+            self._config, {"Content-Type": "application/x-www-form-urlencoded"}
+        )
+        try:
+            res = self._http.post(
+                f"{self._config.authorizer_url}{path}", data=body, headers=headers
+            )
+        except httpx.HTTPError as e:
+            raise AuthorizerConnectionError(str(e)) from e
         return parse_oauth_response(res.status_code, res.content)
 
     def _invoke(
@@ -217,17 +231,16 @@ class AuthorizerClient:
 
     # -- OAuth REST ------------------------------------------------------- #
     def get_token(self, req: t.GetTokenRequest) -> t.GetTokenResponse:
-        grant_type = req.grant_type or "authorization_code"
-        if grant_type == "refresh_token" and not (req.refresh_token and req.refresh_token.strip()):
-            raise ValueError("refresh_token is required for refresh_token grant")
-        body: dict[str, Any] = {
-            "client_id": self._config.client_id,
-            "code": req.code or "",
-            "code_verifier": req.code_verifier or "",
-            "grant_type": grant_type,
-            "refresh_token": req.refresh_token or "",
-        }
-        return t.GetTokenResponse.from_dict(self._oauth("/oauth/token", body))
+        """Exchange credentials for tokens at ``/oauth/token``.
+
+        Supported grants: ``authorization_code`` (default), ``refresh_token``,
+        ``client_credentials`` (RFC 6749 §4.4) and RFC 8693 token exchange
+        (:data:`types.GRANT_TYPE_TOKEN_EXCHANGE`). The machine grants are for
+        trusted server-side code only — never expose ``client_secret``,
+        ``client_assertion``, or subject/actor tokens to untrusted code.
+        """
+        body = build_token_body(self._config.client_id, req)
+        return t.GetTokenResponse.from_dict(self._oauth_form("/oauth/token", body))
 
     def revoke_token(self, req: t.RevokeTokenRequest) -> t.GenericResponse:
         if not req.refresh_token or not req.refresh_token.strip():

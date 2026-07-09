@@ -1,5 +1,6 @@
 # tests/test_client_authed.py
 import json
+from urllib.parse import parse_qs
 
 import pytest
 import respx
@@ -99,6 +100,14 @@ def test_list_permissions():
     assert out.objects == ["document:1"]
 
 
+def _form(route) -> dict[str, str]:
+    """Decode the single-valued urlencoded request body of the first call."""
+    request = route.calls[0].request
+    assert request.headers["content-type"] == "application/x-www-form-urlencoded"
+    decoded = parse_qs(request.content.decode(), keep_blank_values=True)
+    return {k: v[0] for k, v in decoded.items()}
+
+
 @respx.mock
 def test_get_token_oauth_endpoint():
     route = respx.post("https://auth.example.com/oauth/token").mock(
@@ -109,10 +118,12 @@ def test_get_token_oauth_endpoint():
     with _client() as c:
         out = c.get_token(t.GetTokenRequest(code="abc", code_verifier="ver"))
     assert out.access_token == "tok"
-    sent = json.loads(route.calls[0].request.content)
-    assert sent["client_id"] == "cid"
-    assert sent["grant_type"] == "authorization_code"
-    assert sent["code"] == "abc"
+    assert _form(route) == {
+        "client_id": "cid",
+        "grant_type": "authorization_code",
+        "code": "abc",
+        "code_verifier": "ver",
+    }
 
 
 def test_get_token_refresh_requires_token():
@@ -121,6 +132,108 @@ def test_get_token_refresh_requires_token():
     with _client() as c:
         with pytest.raises(ValueError):
             c.get_token(t.GetTokenRequest(grant_type="refresh_token"))
+
+
+@respx.mock
+def test_get_token_client_credentials_form_body():
+    route = respx.post("https://auth.example.com/oauth/token").mock(
+        return_value=Response(
+            200,
+            json={
+                "access_token": "mtok",
+                "token_type": "Bearer",
+                "expires_in": 900,
+                "scope": "read:users",
+            },
+        )
+    )
+    with _client() as c:
+        out = c.get_token(
+            t.GetTokenRequest(
+                grant_type=t.GRANT_TYPE_CLIENT_CREDENTIALS,
+                client_secret="s3cret",
+                scope="read:users",
+            )
+        )
+    assert out.access_token == "mtok"
+    assert out.token_type == "Bearer"
+    assert out.scope == "read:users"
+    assert out.id_token == ""
+    assert _form(route) == {
+        "client_id": "cid",
+        "grant_type": "client_credentials",
+        "client_secret": "s3cret",
+        "scope": "read:users",
+    }
+
+
+@respx.mock
+def test_get_token_client_credentials_with_assertion():
+    route = respx.post("https://auth.example.com/oauth/token").mock(
+        return_value=Response(200, json={"access_token": "mtok", "expires_in": 900})
+    )
+    with _client() as c:
+        c.get_token(
+            t.GetTokenRequest(
+                grant_type=t.GRANT_TYPE_CLIENT_CREDENTIALS,
+                client_assertion="jwt-svid",
+                client_assertion_type=t.CLIENT_ASSERTION_TYPE_JWT_BEARER,
+            )
+        )
+    sent = _form(route)
+    assert sent["client_assertion"] == "jwt-svid"
+    assert sent["client_assertion_type"] == t.CLIENT_ASSERTION_TYPE_JWT_BEARER
+    assert "client_secret" not in sent  # only set params are sent
+
+
+@respx.mock
+def test_get_token_token_exchange_form_body():
+    route = respx.post("https://auth.example.com/oauth/token").mock(
+        return_value=Response(
+            200,
+            json={
+                "access_token": "delegated",
+                "issued_token_type": "urn:ietf:params:oauth:token-type:access_token",
+                "token_type": "Bearer",
+                "expires_in": 300,
+                "scope": "read:docs",
+            },
+        )
+    )
+    with _client() as c:
+        out = c.get_token(
+            t.GetTokenRequest(
+                grant_type=t.GRANT_TYPE_TOKEN_EXCHANGE,
+                client_secret="agent-secret",
+                subject_token="user-tok",
+                subject_token_type=t.TOKEN_TYPE_ACCESS_TOKEN,
+                actor_token="agent-tok",
+                actor_token_type=t.TOKEN_TYPE_ACCESS_TOKEN,
+                resource="https://api.example.com",
+                scope="read:docs",
+            )
+        )
+    assert out.access_token == "delegated"
+    assert out.issued_token_type == "urn:ietf:params:oauth:token-type:access_token"
+    assert _form(route) == {
+        "client_id": "cid",
+        "grant_type": t.GRANT_TYPE_TOKEN_EXCHANGE,
+        "client_secret": "agent-secret",
+        "scope": "read:docs",
+        "subject_token": "user-tok",
+        "subject_token_type": t.TOKEN_TYPE_ACCESS_TOKEN,
+        "actor_token": "agent-tok",
+        "actor_token_type": t.TOKEN_TYPE_ACCESS_TOKEN,
+        "resource": "https://api.example.com",
+    }
+
+
+def test_get_token_token_exchange_requires_subject_token():
+    import pytest
+
+    with _client() as c:
+        with pytest.raises(ValueError):
+            c.get_token(t.GetTokenRequest(grant_type=t.GRANT_TYPE_TOKEN_EXCHANGE))
 
 
 @respx.mock
