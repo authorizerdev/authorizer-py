@@ -28,6 +28,10 @@ class MethodSpec:
     grpc_method: str | None = None
     grpc_request: str | None = None
     grpc_response_unwrap: str | None = None
+    # gql_flat_vars: True for the handful of GraphQL fields (webauthn_*
+    # ceremonies) that take top-level scalar args instead of a single
+    # ``params: X`` input object — see _core.prepare_http.
+    gql_flat_vars: bool = False
 
 
 ALL = ("graphql", "rest", "grpc")
@@ -121,6 +125,42 @@ PUBLIC: dict[str, MethodSpec] = {
         ALL, q.LIST_PERMISSIONS, "list_permissions", "POST", "/v1/list_permissions", None,
         "ListPermissions", "ListPermissionsRequest", None,
     ),
+    "skip_mfa_setup": MethodSpec(
+        ALL, q.SKIP_MFA_SETUP, "skip_mfa_setup", "POST", "/v1/skip_mfa_setup", None,
+        "SkipMfaSetup", "SkipMfaSetupRequest", None,
+    ),
+    "lock_mfa": MethodSpec(
+        ALL, q.LOCK_MFA, "lock_mfa", "POST", "/v1/lock_mfa", None,
+        "LockMfa", "LockMfaRequest", None,
+    ),
+    "email_otp_mfa_setup": MethodSpec(
+        ALL, q.EMAIL_OTP_MFA_SETUP, "email_otp_mfa_setup",
+        "POST", "/v1/email_otp_mfa_setup", None,
+        "EmailOtpMfaSetup", "EmailOtpMfaSetupRequest", None,
+    ),
+    "sms_otp_mfa_setup": MethodSpec(
+        ALL, q.SMS_OTP_MFA_SETUP, "sms_otp_mfa_setup", "POST", "/v1/sms_otp_mfa_setup", None,
+        "SmsOtpMfaSetup", "SmsOtpMfaSetupRequest", None,
+    ),
+    # WebAuthn/passkeys + TOTP setup: graphql-only on the server (no proto RPC).
+    "totp_mfa_setup": MethodSpec(GQL_ONLY, q.TOTP_MFA_SETUP, "totp_mfa_setup"),
+    "webauthn_registration_options": MethodSpec(
+        GQL_ONLY, q.WEBAUTHN_REGISTRATION_OPTIONS, "webauthn_registration_options",
+        gql_flat_vars=True,
+    ),
+    "webauthn_registration_verify": MethodSpec(
+        GQL_ONLY, q.WEBAUTHN_REGISTRATION_VERIFY, "webauthn_registration_verify"
+    ),
+    "webauthn_login_options": MethodSpec(
+        GQL_ONLY, q.WEBAUTHN_LOGIN_OPTIONS, "webauthn_login_options", gql_flat_vars=True
+    ),
+    "webauthn_login_verify": MethodSpec(
+        GQL_ONLY, q.WEBAUTHN_LOGIN_VERIFY, "webauthn_login_verify"
+    ),
+    "webauthn_delete_credential": MethodSpec(
+        GQL_ONLY, q.WEBAUTHN_DELETE_CREDENTIAL, "webauthn_delete_credential", gql_flat_vars=True
+    ),
+    "webauthn_credentials": MethodSpec(GQL_ONLY, q.WEBAUTHN_CREDENTIALS, "webauthn_credentials"),
 }
 
 
@@ -267,27 +307,121 @@ ADMIN: dict[str, MethodSpec] = {
     "admin_signup": MethodSpec(GQL_ONLY, q.ADMIN_SIGNUP, "_admin_signup"),
     "update_env": MethodSpec(GQL_ONLY, q.ADMIN_UPDATE_ENV, "_update_env"),
     "generate_jwt_keys": MethodSpec(GQL_ONLY, q.ADMIN_GENERATE_JWT_KEYS, "_generate_jwt_keys"),
-    # Machine-agent-identity ops. Orgs/SSO/SCIM are graphql-only on the server.
-    # Clients + trusted issuers DO have proto RPCs server-side, but the vendored
-    # stubs (src/authorizer/_grpc) predate them — rest/grpc stay off until the
-    # stubs are re-vendored, so all of these are graphql-only for now.
-    "create_client": MethodSpec(GQL_ONLY, q.ADMIN_CREATE_CLIENT, "_create_client"),
-    "update_client": MethodSpec(GQL_ONLY, q.ADMIN_UPDATE_CLIENT, "_update_client"),
-    "delete_client": MethodSpec(GQL_ONLY, q.ADMIN_DELETE_CLIENT, "_delete_client"),
-    "rotate_client_secret": MethodSpec(
-        GQL_ONLY, q.ADMIN_ROTATE_CLIENT_SECRET, "_rotate_client_secret"
+    # Machine-agent-identity ops. Orgs/SSO/SCIM/user_organizations/org_domains
+    # are graphql-only on the server. Clients + trusted issuers DO have proto
+    # RPCs server-side and the vendored stubs now carry them (re-vendored from
+    # proto/buf.gen.clients.yaml at server HEAD ca628cee) -- ALL 3 protocols.
+    # CreateClientResponse/RotateClientSecretRequest->CreateClientResponse carry
+    # TWO top-level fields (client, client_secret) -- unwrap=None, whole message.
+    "create_client": MethodSpec(
+        ALL, q.ADMIN_CREATE_CLIENT, "_create_client", "POST", "/v1/admin/create_client", None,
+        "CreateClient", "CreateClientRequest", None,
     ),
-    "get_client": MethodSpec(GQL_ONLY, q.ADMIN_GET_CLIENT, "_client"),
-    "clients": MethodSpec(GQL_ONLY, q.ADMIN_CLIENTS, "_clients"),
-    "add_trusted_issuer": MethodSpec(GQL_ONLY, q.ADMIN_ADD_TRUSTED_ISSUER, "_add_trusted_issuer"),
+    "update_client": MethodSpec(
+        ALL, q.ADMIN_UPDATE_CLIENT, "_update_client", "POST", "/v1/admin/update_client", "client",
+        "UpdateClient", "UpdateClientRequest", "client",
+    ),
+    "delete_client": MethodSpec(
+        ALL, q.ADMIN_DELETE_CLIENT, "_delete_client", "POST", "/v1/admin/delete_client", None,
+        "DeleteClient", "DeleteClientRequest", None,
+    ),
+    "rotate_client_secret": MethodSpec(
+        ALL, q.ADMIN_ROTATE_CLIENT_SECRET, "_rotate_client_secret",
+        "POST", "/v1/admin/rotate_client_secret", None,
+        "RotateClientSecret", "RotateClientSecretRequest", None,
+    ),
+    "get_client": MethodSpec(
+        ALL, q.ADMIN_GET_CLIENT, "_client", "POST", "/v1/admin/client", "client",
+        "GetClient", "GetClientRequest", "client",
+    ),
+    "clients": MethodSpec(
+        ALL, q.ADMIN_CLIENTS, "_clients", "POST", "/v1/admin/clients", None,
+        "Clients", "ClientsRequest", None,
+    ),
+    "add_trusted_issuer": MethodSpec(
+        ALL, q.ADMIN_ADD_TRUSTED_ISSUER, "_add_trusted_issuer",
+        "POST", "/v1/admin/add_trusted_issuer", "trusted_issuer",
+        "AddTrustedIssuer", "AddTrustedIssuerRequest", "trusted_issuer",
+    ),
     "update_trusted_issuer": MethodSpec(
-        GQL_ONLY, q.ADMIN_UPDATE_TRUSTED_ISSUER, "_update_trusted_issuer"
+        ALL, q.ADMIN_UPDATE_TRUSTED_ISSUER, "_update_trusted_issuer",
+        "POST", "/v1/admin/update_trusted_issuer", "trusted_issuer",
+        "UpdateTrustedIssuer", "UpdateTrustedIssuerRequest", "trusted_issuer",
     ),
     "delete_trusted_issuer": MethodSpec(
-        GQL_ONLY, q.ADMIN_DELETE_TRUSTED_ISSUER, "_delete_trusted_issuer"
+        ALL, q.ADMIN_DELETE_TRUSTED_ISSUER, "_delete_trusted_issuer",
+        "POST", "/v1/admin/delete_trusted_issuer", None,
+        "DeleteTrustedIssuer", "DeleteTrustedIssuerRequest", None,
     ),
-    "get_trusted_issuer": MethodSpec(GQL_ONLY, q.ADMIN_GET_TRUSTED_ISSUER, "_trusted_issuer"),
-    "trusted_issuers": MethodSpec(GQL_ONLY, q.ADMIN_TRUSTED_ISSUERS, "_trusted_issuers"),
+    "get_trusted_issuer": MethodSpec(
+        ALL, q.ADMIN_GET_TRUSTED_ISSUER, "_trusted_issuer",
+        "POST", "/v1/admin/trusted_issuer", "trusted_issuer",
+        "GetTrustedIssuer", "GetTrustedIssuerRequest", "trusted_issuer",
+    ),
+    "trusted_issuers": MethodSpec(
+        ALL, q.ADMIN_TRUSTED_ISSUERS, "_trusted_issuers",
+        "POST", "/v1/admin/trusted_issuers", None,
+        "TrustedIssuers", "TrustedIssuersRequest", None,
+    ),
+    # SAML IdP (Authorizer as Identity Provider for downstream SPs).
+    "create_saml_service_provider": MethodSpec(
+        ALL, q.ADMIN_CREATE_SAML_SERVICE_PROVIDER, "_create_saml_service_provider",
+        "POST", "/v1/admin/create_saml_service_provider", "saml_service_provider",
+        "CreateSamlServiceProvider", "CreateSamlServiceProviderRequest", "saml_service_provider",
+    ),
+    "update_saml_service_provider": MethodSpec(
+        ALL, q.ADMIN_UPDATE_SAML_SERVICE_PROVIDER, "_update_saml_service_provider",
+        "POST", "/v1/admin/update_saml_service_provider", "saml_service_provider",
+        "UpdateSamlServiceProvider", "UpdateSamlServiceProviderRequest", "saml_service_provider",
+    ),
+    "delete_saml_service_provider": MethodSpec(
+        ALL, q.ADMIN_DELETE_SAML_SERVICE_PROVIDER, "_delete_saml_service_provider",
+        "POST", "/v1/admin/delete_saml_service_provider", None,
+        "DeleteSamlServiceProvider", "DeleteSamlServiceProviderRequest", None,
+    ),
+    "get_saml_service_provider": MethodSpec(
+        ALL, q.ADMIN_GET_SAML_SERVICE_PROVIDER, "_saml_service_provider",
+        "POST", "/v1/admin/saml_service_provider", "saml_service_provider",
+        "GetSamlServiceProvider", "GetSamlServiceProviderRequest", "saml_service_provider",
+    ),
+    "list_saml_service_providers": MethodSpec(
+        ALL, q.ADMIN_LIST_SAML_SERVICE_PROVIDERS, "_list_saml_service_providers",
+        "POST", "/v1/admin/saml_service_providers", None,
+        "ListSamlServiceProviders", "ListSamlServiceProvidersRequest", None,
+    ),
+    "rotate_saml_idp_cert": MethodSpec(
+        ALL, q.ADMIN_ROTATE_SAML_IDP_CERT, "_rotate_saml_idp_cert",
+        "POST", "/v1/admin/rotate_saml_idp_cert", "saml_idp_key",
+        "RotateSamlIdpCert", "RotateSamlIdpCertRequest", "saml_idp_key",
+    ),
+    "retire_saml_idp_key": MethodSpec(
+        ALL, q.ADMIN_RETIRE_SAML_IDP_KEY, "_retire_saml_idp_key",
+        "POST", "/v1/admin/retire_saml_idp_key", None,
+        "RetireSamlIdpKey", "RetireSamlIdpKeyRequest", None,
+    ),
+    "list_saml_idp_keys": MethodSpec(
+        ALL, q.ADMIN_LIST_SAML_IDP_KEYS, "_list_saml_idp_keys",
+        "POST", "/v1/admin/saml_idp_keys", None,
+        "ListSamlIdpKeys", "ListSamlIdpKeysRequest", None,
+    ),
+    "import_saml_sp_metadata": MethodSpec(
+        ALL, q.ADMIN_IMPORT_SAML_SP_METADATA, "_import_saml_sp_metadata",
+        "POST", "/v1/admin/import_saml_sp_metadata", "result",
+        "ImportSamlSpMetadata", "ImportSamlSpMetadataRequest", "result",
+    ),
+    # user_organizations / org domains: graphql-only on the server (no proto RPC).
+    "user_organizations": MethodSpec(
+        GQL_ONLY, q.ADMIN_USER_ORGANIZATIONS, "_user_organizations"
+    ),
+    "request_org_domain": MethodSpec(
+        GQL_ONLY, q.ADMIN_REQUEST_ORG_DOMAIN, "_request_org_domain"
+    ),
+    "verify_org_domain": MethodSpec(GQL_ONLY, q.ADMIN_VERIFY_ORG_DOMAIN, "_verify_org_domain"),
+    "add_verified_org_domain": MethodSpec(
+        GQL_ONLY, q.ADMIN_ADD_VERIFIED_ORG_DOMAIN, "_add_verified_org_domain"
+    ),
+    "delete_org_domain": MethodSpec(GQL_ONLY, q.ADMIN_DELETE_ORG_DOMAIN, "_delete_org_domain"),
+    "org_domains": MethodSpec(GQL_ONLY, q.ADMIN_ORG_DOMAINS, "_org_domains"),
     "create_organization": MethodSpec(
         GQL_ONLY, q.ADMIN_CREATE_ORGANIZATION, "_create_organization"
     ),

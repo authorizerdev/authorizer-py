@@ -279,6 +279,75 @@ class ListPermissionsRequest(_Request):
     user: str | None = None
 
 
+# -- MFA setup / recovery ----------------------------------------------------- #
+@dataclass
+class SkipMfaSetupRequest(_Request):
+    # Either email or phone_number is required, to resolve which user's MFA
+    # session cookie this is.
+    email: str | None = None
+    phone_number: str | None = None
+    state: str | None = None
+
+
+@dataclass
+class LockMfaRequest(_Request):
+    # Either email or phone_number is required, to resolve which user's MFA
+    # session cookie this is — same pattern as SkipMfaSetupRequest.
+    email: str | None = None
+    phone_number: str | None = None
+
+
+@dataclass
+class OtpMfaSetupRequest(_Request):
+    """Shared request shape for email_otp_mfa_setup / sms_otp_mfa_setup / totp_mfa_setup.
+
+    email/phone_number are only used in the MFA-session-cookie mode (no bearer
+    token yet); ignored when the caller has a valid bearer token/session.
+    """
+
+    email: str | None = None
+    phone_number: str | None = None
+
+
+# -- WebAuthn / passkeys ------------------------------------------------------- #
+@dataclass
+class WebauthnRegistrationOptionsRequest(_Request):
+    email: str | None = None
+    phone_number: str | None = None
+
+
+@dataclass
+class WebauthnRegistrationVerifyRequest(_Request):
+    # JSON-encoded PublicKeyCredential attestation response from
+    # navigator.credentials.create().
+    credential: str
+    # Optional human label for the passkey (e.g. "MacBook Touch ID").
+    name: str | None = None
+    # Only used on the MFA-session-cookie path; ignored for a bearer-token caller.
+    email: str | None = None
+    phone_number: str | None = None
+    state: str | None = None
+
+
+@dataclass
+class WebauthnLoginOptionsRequest(_Request):
+    email: str | None = None
+
+
+@dataclass
+class WebauthnLoginVerifyRequest(_Request):
+    # JSON-encoded PublicKeyCredential assertion response from
+    # navigator.credentials.get().
+    credential: str
+    # OAuth authorize state to continue an in-progress authorization, if any.
+    state: str | None = None
+
+
+@dataclass
+class WebauthnDeleteCredentialRequest(_Request):
+    id: str
+
+
 # --------------------------------------------------------------------------- #
 # Response types
 # --------------------------------------------------------------------------- #
@@ -304,6 +373,15 @@ class User:
     is_multi_factor_auth_enabled: bool | None = None
     app_data: dict[str, Any] | None = None
     revoked_timestamp: int | None = None
+    # has_skipped_mfa_setup_at is set once the user explicitly skips the
+    # optional MFA setup prompt shown at login. None means never skipped.
+    has_skipped_mfa_setup_at: int | None = None
+    # mfa_locked_at is set once the user reports losing access to their only
+    # MFA factor(s) with no OTP fallback enrolled. None means not locked.
+    mfa_locked_at: int | None = None
+    # enrolled_mfa_methods lists verified MFA factors: any of "totp",
+    # "webauthn", "email_otp", "sms_otp". Empty list means nothing enrolled.
+    enrolled_mfa_methods: list[str] | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> User:
@@ -320,6 +398,16 @@ class AuthToken:
     should_show_email_otp_screen: bool | None = None
     should_show_mobile_otp_screen: bool | None = None
     should_show_totp_screen: bool | None = None
+    # should_offer_webauthn_mfa_verify is true when a passkey-verify offer is
+    # available (see AuthResponse.should_offer_webauthn_mfa_verify in the
+    # server schema for the exact semantics).
+    should_offer_webauthn_mfa_verify: bool | None = None
+    # should_offer_webauthn_mfa_setup / should_offer_email_otp_mfa_setup /
+    # should_offer_sms_otp_mfa_setup are true, alongside should_show_totp_screen,
+    # during a first-time optional-MFA offer for that factor.
+    should_offer_webauthn_mfa_setup: bool | None = None
+    should_offer_email_otp_mfa_setup: bool | None = None
+    should_offer_sms_otp_mfa_setup: bool | None = None
     authenticator_scanner_image: str | None = None
     authenticator_secret: str | None = None
     authenticator_recovery_codes: list[str] | None = None
@@ -477,6 +565,42 @@ class ListPermissionsResponse:
         )
 
 
+@dataclass
+class WebauthnRegistrationOptionsResponse:
+    # JSON-encoded PublicKeyCredentialCreationOptions to pass to
+    # navigator.credentials.create().
+    options: str = ""
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> WebauthnRegistrationOptionsResponse:
+        return cls(**_known(cls, data))
+
+
+@dataclass
+class WebauthnLoginOptionsResponse:
+    # JSON-encoded PublicKeyCredentialRequestOptions to pass to
+    # navigator.credentials.get().
+    options: str = ""
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> WebauthnLoginOptionsResponse:
+        return cls(**_known(cls, data))
+
+
+@dataclass
+class WebauthnCredentialInfo:
+    id: str = ""
+    name: str = ""
+    transports: list[str] | None = None
+    created_at: int | None = None
+    updated_at: int | None = None
+    last_used_at: int | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> WebauthnCredentialInfo:
+        return cls(**_known(cls, data))
+
+
 # --------------------------------------------------------------------------- #
 # Admin request types
 # --------------------------------------------------------------------------- #
@@ -490,6 +614,19 @@ class PaginationRequest(_Request):
 @dataclass
 class PaginatedRequest(_Request):
     pagination: PaginationRequest | None = None
+
+
+@dataclass
+class ListUsersRequest(_Request):
+    """Request for :meth:`AuthorizerAdminClient.users`.
+
+    ``query`` is an optional case-insensitive substring filter matched
+    against email, given_name, family_name and nickname. Empty/absent
+    means no filter (full list).
+    """
+
+    pagination: PaginationRequest | None = None
+    query: str | None = None
 
 
 @dataclass
@@ -519,6 +656,11 @@ class UpdateUserRequest(_Request):
     picture: str | None = None
     roles: list[str] | None = None
     is_multi_factor_auth_enabled: bool | None = None
+    # reset_mfa, when true, clears the user's entire MFA state: mfa_locked_at,
+    # is_multi_factor_auth_enabled, has_skipped_mfa_setup_at, and deletes all
+    # enrolled authenticators/passkeys. The user's next login lands back on
+    # the first-time setup screen, same as a brand-new account.
+    reset_mfa: bool | None = None
     app_data: dict[str, Any] | None = None
 
 
@@ -854,6 +996,106 @@ class ScimEndpointRequest(_Request):
     org_id: str
 
 
+# -- SAML IdP (Authorizer as Identity Provider for downstream SPs) ----------- #
+@dataclass
+class CreateSAMLServiceProviderRequest(_Request):
+    org_id: str
+    name: str
+    # entity_id: the SP entity ID (unique within the org).
+    entity_id: str
+    # acs_url: the SP Assertion Consumer Service URL (https recommended).
+    acs_url: str
+    sp_cert_pem: str | None = None
+    # name_id_format: default urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress.
+    name_id_format: str | None = None
+    # mapped_attributes: JSON, e.g. {"email":"email","given_name":"firstName"}.
+    mapped_attributes: str | None = None
+    # allow_idp_initiated: default false (SP-initiated only).
+    allow_idp_initiated: bool | None = None
+
+
+@dataclass
+class UpdateSAMLServiceProviderRequest(_Request):
+    id: str
+    name: str | None = None
+    entity_id: str | None = None
+    acs_url: str | None = None
+    sp_cert_pem: str | None = None
+    name_id_format: str | None = None
+    mapped_attributes: str | None = None
+    allow_idp_initiated: bool | None = None
+    is_active: bool | None = None
+
+
+@dataclass
+class SAMLServiceProviderRequest(_Request):
+    id: str
+
+
+@dataclass
+class ListSAMLServiceProvidersRequest(_Request):
+    org_id: str
+    pagination: PaginatedRequest | None = None
+
+
+@dataclass
+class RotateSAMLIDPCertRequest(_Request):
+    org_id: str
+
+
+@dataclass
+class RetireSAMLIDPKeyRequest(_Request):
+    id: str
+
+
+@dataclass
+class ListSAMLIDPKeysRequest(_Request):
+    org_id: str
+
+
+@dataclass
+class ImportSAMLSPMetadataRequest(_Request):
+    # metadata_xml: pasted SP metadata XML (NOT a URL — no remote fetch).
+    metadata_xml: str
+
+
+# -- user organizations ------------------------------------------------------- #
+@dataclass
+class UserOrganizationsRequest(_Request):
+    user_id: str
+    pagination: PaginationRequest | None = None
+
+
+# -- org domains (home-realm discovery) --------------------------------------- #
+@dataclass
+class RequestOrgDomainRequest(_Request):
+    org_id: str
+    domain: str
+
+
+@dataclass
+class VerifyOrgDomainRequest(_Request):
+    org_id: str
+    domain: str
+
+
+@dataclass
+class AddVerifiedOrgDomainRequest(_Request):
+    org_id: str
+    domain: str
+
+
+@dataclass
+class ListOrgDomainsRequest(_Request):
+    org_id: str
+    pagination: PaginatedRequest | None = None
+
+
+@dataclass
+class DeleteOrgDomainRequest(_Request):
+    domain: str
+
+
 # --------------------------------------------------------------------------- #
 # Admin response types
 # --------------------------------------------------------------------------- #
@@ -1155,6 +1397,9 @@ class FgaExpandResponse:
 @dataclass
 class Client:
     id: str = ""
+    # client_id is the public OAuth identifier presented at the authorize/token
+    # endpoints, distinct from id (internal surrogate key).
+    client_id: str = ""
     name: str = ""
     description: str | None = None
     allowed_scopes: list[str] = field(default_factory=list)
@@ -1271,6 +1516,10 @@ class OrgMember:
     id: str = ""
     org_id: str = ""
     user_id: str = ""
+    # Resolved user identity for display; blank when the user no longer exists.
+    email: str | None = None
+    given_name: str | None = None
+    family_name: str | None = None
     # roles is the set of per-organization roles granted to this member.
     roles: list[str] = field(default_factory=list)
     created_at: int | None = None
@@ -1368,3 +1617,149 @@ class CreateScimEndpointResponse:
             scim_endpoint=ScimEndpoint.from_dict(raw) if isinstance(raw, dict) else ScimEndpoint(),
             token=str(data.get("token", "")),
         )
+
+
+# -- SAML IdP (Authorizer as Identity Provider for downstream SPs) ----------- #
+@dataclass
+class SAMLServiceProvider:
+    id: str = ""
+    org_id: str = ""
+    name: str = ""
+    entity_id: str = ""
+    acs_url: str = ""
+    sp_cert_pem: str | None = None
+    name_id_format: str | None = None
+    mapped_attributes: str | None = None
+    allow_idp_initiated: bool = False
+    is_active: bool = False
+    created_at: int | None = None
+    updated_at: int | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> SAMLServiceProvider:
+        return cls(**_known(cls, data))
+
+
+@dataclass
+class SAMLServiceProvidersResponse:
+    saml_service_providers: list[SAMLServiceProvider] = field(default_factory=list)
+    pagination: Pagination = field(default_factory=Pagination)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> SAMLServiceProvidersResponse:
+        raw = data.get("saml_service_providers")
+        items = raw if isinstance(raw, list) else []
+        return cls(
+            saml_service_providers=[
+                SAMLServiceProvider.from_dict(x) for x in items if isinstance(x, dict)
+            ],
+            pagination=_pagination(data),
+        )
+
+
+# SAMLIDPKey: per-org SAML IdP signing keypair. The private key is NEVER
+# projected — only the certificate and rotation status.
+@dataclass
+class SAMLIDPKey:
+    id: str = ""
+    org_id: str = ""
+    cert_pem: str = ""
+    algorithm: str = ""
+    # status: "current" (signs new assertions), "active" (published, not
+    # signing), or "retired" (neither).
+    status: str = ""
+    created_at: int | None = None
+    updated_at: int | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> SAMLIDPKey:
+        return cls(**_known(cls, data))
+
+
+@dataclass
+class SAMLSPMetadataParseResult:
+    entity_id: str = ""
+    acs_url: str = ""
+    certificate: str | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> SAMLSPMetadataParseResult:
+        return cls(**_known(cls, data))
+
+
+# -- user organizations ------------------------------------------------------- #
+@dataclass
+class UserOrganization:
+    organization: Organization = field(default_factory=Organization)
+    roles: list[str] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> UserOrganization:
+        raw = data.get("organization")
+        raw_roles = data.get("roles")
+        return cls(
+            organization=Organization.from_dict(raw) if isinstance(raw, dict) else Organization(),
+            roles=list(raw_roles) if isinstance(raw_roles, list) else [],
+        )
+
+
+@dataclass
+class UserOrganizationsResponse:
+    user_organizations: list[UserOrganization] = field(default_factory=list)
+    pagination: Pagination = field(default_factory=Pagination)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> UserOrganizationsResponse:
+        raw = data.get("user_organizations")
+        items = raw if isinstance(raw, list) else []
+        return cls(
+            user_organizations=[
+                UserOrganization.from_dict(x) for x in items if isinstance(x, dict)
+            ],
+            pagination=_pagination(data),
+        )
+
+
+# -- org domains (home-realm discovery) --------------------------------------- #
+@dataclass
+class OrgDomain:
+    domain: str = ""
+    org_id: str = ""
+    verified_at: int | None = None
+    created_at: int | None = None
+    updated_at: int | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> OrgDomain:
+        return cls(**_known(cls, data))
+
+
+@dataclass
+class OrgDomainsResponse:
+    org_domains: list[OrgDomain] = field(default_factory=list)
+    pagination: Pagination = field(default_factory=Pagination)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> OrgDomainsResponse:
+        raw = data.get("org_domains")
+        items = raw if isinstance(raw, list) else []
+        return cls(
+            org_domains=[OrgDomain.from_dict(x) for x in items if isinstance(x, dict)],
+            pagination=_pagination(data),
+        )
+
+
+# OrgDomainChallenge is the DNS TXT record a tenant must publish to prove
+# control of a domain. Returned by request_org_domain; no durable row exists
+# until the domain is verified.
+@dataclass
+class OrgDomainChallenge:
+    domain: str = ""
+    # record_type is always "TXT".
+    record_type: str = ""
+    record_name: str = ""
+    record_value: str = ""
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> OrgDomainChallenge:
+        return cls(**_known(cls, data))

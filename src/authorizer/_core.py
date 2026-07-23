@@ -148,7 +148,13 @@ def prepare_http(
             config.authorizer_url, spec.rest_method, spec.rest_path, body, full_headers
         )
         return req, "rest", spec.rest_unwrap
-    variables = {"data": data} if data is not None else None
+    # gql_flat_vars: a handful of GraphQL fields (webauthn_* ceremonies) take
+    # top-level scalar args instead of a single ``params: X`` input object, so
+    # the query variables ARE the data dict, not {"data": data}.
+    if spec.gql_flat_vars:
+        variables = data or None
+    else:
+        variables = {"data": data} if data is not None else None
     req = build_graphql_request(config.authorizer_url, spec.gql_query, variables, full_headers)
     return req, "graphql", spec.gql_field
 
