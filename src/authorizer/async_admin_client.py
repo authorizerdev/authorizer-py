@@ -155,7 +155,7 @@ class AsyncAuthorizerAdminClient:
         return t.GenericResponse.from_dict(res or {})
 
     async def verification_requests(
-        self, req: t.PaginatedRequest | None = None
+        self, req: t.PaginationRequest | None = None
     ) -> t.VerificationRequestsResponse:
         res = await self._invoke(
             "verification_requests", d.ADMIN["verification_requests"],
@@ -194,7 +194,7 @@ class AsyncAuthorizerAdminClient:
         res = await self._invoke("get_webhook", d.ADMIN["get_webhook"], req.to_dict())
         return t.Webhook.from_dict(res or {})
 
-    async def webhooks(self, req: t.PaginatedRequest | None = None) -> t.WebhooksResponse:
+    async def webhooks(self, req: t.PaginationRequest | None = None) -> t.WebhooksResponse:
         res = await self._invoke("webhooks", d.ADMIN["webhooks"], req.to_dict() if req else None)
         return t.WebhooksResponse.from_dict(res or {})
 
@@ -229,7 +229,7 @@ class AsyncAuthorizerAdminClient:
         return t.GenericResponse.from_dict(res or {})
 
     async def email_templates(
-        self, req: t.PaginatedRequest | None = None
+        self, req: t.PaginationRequest | None = None
     ) -> t.EmailTemplatesResponse:
         res = await self._invoke(
             "email_templates", d.ADMIN["email_templates"], req.to_dict() if req else None

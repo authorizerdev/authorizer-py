@@ -199,7 +199,7 @@ ADMIN_DELETE_USER = (
     "{ _delete_user(params: $data) { message } }"
 )
 ADMIN_VERIFICATION_REQUESTS = (
-    "query adminVerificationRequests($data: PaginatedRequest) "
+    "query adminVerificationRequests($data: PaginationRequest) "
     f"{{ _verification_requests(params: $data) {{ {PAGINATION_FRAGMENT} "
     f"verification_requests {{ {VERIFICATION_REQUEST_FRAGMENT} }} }} }}"
 )
@@ -232,7 +232,7 @@ ADMIN_GET_WEBHOOK = (
     f"{{ _webhook(params: $data) {{ {WEBHOOK_FRAGMENT} }} }}"
 )
 ADMIN_WEBHOOKS = (
-    "query adminWebhooks($data: PaginatedRequest) "
+    "query adminWebhooks($data: PaginationRequest) "
     f"{{ _webhooks(params: $data) {{ {PAGINATION_FRAGMENT} webhooks {{ {WEBHOOK_FRAGMENT} }} }} }}"
 )
 ADMIN_WEBHOOK_LOGS = (
@@ -257,7 +257,7 @@ ADMIN_DELETE_EMAIL_TEMPLATE = (
     "{ _delete_email_template(params: $data) { message } }"
 )
 ADMIN_EMAIL_TEMPLATES = (
-    "query adminEmailTemplates($data: PaginatedRequest) "
+    "query adminEmailTemplates($data: PaginationRequest) "
     f"{{ _email_templates(params: $data) {{ {PAGINATION_FRAGMENT} "
     f"email_templates {{ {EMAIL_TEMPLATE_FRAGMENT} }} }} }}"
 )

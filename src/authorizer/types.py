@@ -612,11 +612,6 @@ class PaginationRequest(_Request):
 
 
 @dataclass
-class PaginatedRequest(_Request):
-    pagination: PaginationRequest | None = None
-
-
-@dataclass
 class ListUsersRequest(_Request):
     """Request for :meth:`AuthorizerAdminClient.users`.
 
@@ -818,7 +813,7 @@ class ClientRequest(_Request):
 
 @dataclass
 class ListClientsRequest(_Request):
-    pagination: PaginatedRequest | None = None
+    pagination: PaginationRequest | None = None
 
 
 # -- trusted issuers --------------------------------------------------------- #
@@ -859,7 +854,7 @@ class TrustedIssuerRequest(_Request):
 @dataclass
 class ListTrustedIssuersRequest(_Request):
     service_account_id: str | None = None
-    pagination: PaginatedRequest | None = None
+    pagination: PaginationRequest | None = None
 
 
 # -- organizations ------------------------------------------------------------ #
@@ -885,7 +880,7 @@ class OrganizationRequest(_Request):
 
 @dataclass
 class ListOrganizationsRequest(_Request):
-    pagination: PaginatedRequest | None = None
+    pagination: PaginationRequest | None = None
 
 
 @dataclass
@@ -905,7 +900,7 @@ class RemoveOrgMemberRequest(_Request):
 @dataclass
 class ListOrgMembersRequest(_Request):
     org_id: str
-    pagination: PaginatedRequest | None = None
+    pagination: PaginationRequest | None = None
 
 
 # -- org SSO connections ------------------------------------------------------ #
@@ -1035,7 +1030,7 @@ class SAMLServiceProviderRequest(_Request):
 @dataclass
 class ListSAMLServiceProvidersRequest(_Request):
     org_id: str
-    pagination: PaginatedRequest | None = None
+    pagination: PaginationRequest | None = None
 
 
 @dataclass
@@ -1088,7 +1083,7 @@ class AddVerifiedOrgDomainRequest(_Request):
 @dataclass
 class ListOrgDomainsRequest(_Request):
     org_id: str
-    pagination: PaginatedRequest | None = None
+    pagination: PaginationRequest | None = None
 
 
 @dataclass

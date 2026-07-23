@@ -156,7 +156,7 @@ class AuthorizerAdminClient:
         return t.GenericResponse.from_dict(res or {})
 
     def verification_requests(
-        self, req: t.PaginatedRequest | None = None
+        self, req: t.PaginationRequest | None = None
     ) -> t.VerificationRequestsResponse:
         res = self._invoke(
             "verification_requests", d.ADMIN["verification_requests"],
@@ -195,7 +195,7 @@ class AuthorizerAdminClient:
         res = self._invoke("get_webhook", d.ADMIN["get_webhook"], req.to_dict())
         return t.Webhook.from_dict(res or {})
 
-    def webhooks(self, req: t.PaginatedRequest | None = None) -> t.WebhooksResponse:
+    def webhooks(self, req: t.PaginationRequest | None = None) -> t.WebhooksResponse:
         res = self._invoke("webhooks", d.ADMIN["webhooks"], req.to_dict() if req else None)
         return t.WebhooksResponse.from_dict(res or {})
 
@@ -221,7 +221,7 @@ class AuthorizerAdminClient:
         res = self._invoke("delete_email_template", d.ADMIN["delete_email_template"], req.to_dict())
         return t.GenericResponse.from_dict(res or {})
 
-    def email_templates(self, req: t.PaginatedRequest | None = None) -> t.EmailTemplatesResponse:
+    def email_templates(self, req: t.PaginationRequest | None = None) -> t.EmailTemplatesResponse:
         res = self._invoke(
             "email_templates", d.ADMIN["email_templates"], req.to_dict() if req else None
         )

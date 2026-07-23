@@ -296,7 +296,7 @@ async def test_async_login_and_update_profile(protocol: str) -> None:
 # Admin client — available over all protocols (sync)
 # --------------------------------------------------------------------------- #
 def test_admin_users(admin: AuthorizerAdminClient) -> None:
-    page = admin.users(t.PaginatedRequest(pagination=t.PaginationRequest(page=1, limit=10)))
+    page = admin.users(t.ListUsersRequest(pagination=t.PaginationRequest(page=1, limit=10)))
     assert page.pagination.page == 1
     assert page.pagination.limit == 10  # int64 string coerced to int over REST
     assert isinstance(page.pagination.limit, int)
@@ -304,9 +304,7 @@ def test_admin_users(admin: AuthorizerAdminClient) -> None:
 
 
 def test_admin_verification_requests(admin: AuthorizerAdminClient) -> None:
-    res = admin.verification_requests(
-        t.PaginatedRequest(pagination=t.PaginationRequest(page=1, limit=10))
-    )
+    res = admin.verification_requests(t.PaginationRequest(page=1, limit=10))
     assert isinstance(res.verification_requests, list)
 
 
@@ -331,17 +329,13 @@ def test_admin_webhook_lifecycle(admin: AuthorizerAdminClient, protocol: str) ->
     created_id = ""
     try:
         # drop any leftover webhook for this event from an interrupted prior run
-        for w in admin.webhooks(
-            t.PaginatedRequest(pagination=t.PaginationRequest(page=1, limit=100))
-        ).webhooks:
+        for w in admin.webhooks(t.PaginationRequest(page=1, limit=100)).webhooks:
             if w.event_name == event and w.id:
                 admin.delete_webhook(t.WebhookRequest(id=w.id))
         admin.add_webhook(
             t.AddWebhookRequest(event_name=event, endpoint=endpoint, enabled=False)
         )
-        page = admin.webhooks(
-            t.PaginatedRequest(pagination=t.PaginationRequest(page=1, limit=100))
-        )
+        page = admin.webhooks(t.PaginationRequest(page=1, limit=100))
         assert isinstance(page.webhooks, list)
         match = next((w for w in page.webhooks if w.endpoint == endpoint), None)
         assert match is not None and match.id
@@ -397,9 +391,7 @@ def test_admin_meta_rest_grpc(protocol: str) -> None:
 async def test_async_admin_users(protocol: str) -> None:
     c = AsyncAuthorizerAdminClient(URL, ADMIN_SECRET, protocol=protocol, grpc_endpoint=GRPC)
     try:
-        page = await c.users(
-            t.PaginatedRequest(pagination=t.PaginationRequest(page=1, limit=5))
-        )
+        page = await c.users(t.ListUsersRequest(pagination=t.PaginationRequest(page=1, limit=5)))
         assert page.pagination.page == 1
         assert isinstance(page.pagination.limit, int)
     finally:
