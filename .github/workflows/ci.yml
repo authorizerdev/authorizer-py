@@ -44,11 +44,11 @@ jobs:
         run: |
           docker run -d --name authorizer \
             -p 8080:8080 -p 9091:9091 \
-            quay.io/authorizer/authorizer:2.3.0 \
+            quay.io/authorizer/authorizer:2.4.0-rc.7 \
             --database-type=sqlite --database-url=test.db \
             --jwt-type=HS256 --jwt-secret=test \
             --admin-secret=admin --client-id=ci-client --client-secret=secret \
-            --grpc-insecure=true
+            --grpc-insecure=true --disable-mfa
           for i in $(seq 1 30); do
             curl -fsS http://localhost:8080/health && break || sleep 2
           done
