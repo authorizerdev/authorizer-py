@@ -229,6 +229,106 @@ class AuthorizerClient:
         )
         return t.ListPermissionsResponse.from_dict(res or {})
 
+    # -- MFA setup / recovery ---------------------------------------------- #
+    def skip_mfa_setup(
+        self, req: t.SkipMfaSetupRequest, headers: dict[str, str] | None = None
+    ) -> t.AuthToken:
+        res = self._invoke("skip_mfa_setup", d.PUBLIC["skip_mfa_setup"], req.to_dict(), headers)
+        return t.AuthToken.from_dict(res or {})
+
+    def lock_mfa(
+        self, req: t.LockMfaRequest, headers: dict[str, str] | None = None
+    ) -> t.GenericResponse:
+        """No OTP fallback? Locks the account; requires admin recovery afterward."""
+        res = self._invoke("lock_mfa", d.PUBLIC["lock_mfa"], req.to_dict(), headers)
+        return t.GenericResponse.from_dict(res or {})
+
+    def email_otp_mfa_setup(
+        self, req: t.OtpMfaSetupRequest | None = None, headers: dict[str, str] | None = None
+    ) -> t.GenericResponse:
+        data = req.to_dict() if req is not None else None
+        res = self._invoke("email_otp_mfa_setup", d.PUBLIC["email_otp_mfa_setup"], data, headers)
+        return t.GenericResponse.from_dict(res or {})
+
+    def sms_otp_mfa_setup(
+        self, req: t.OtpMfaSetupRequest | None = None, headers: dict[str, str] | None = None
+    ) -> t.GenericResponse:
+        data = req.to_dict() if req is not None else None
+        res = self._invoke("sms_otp_mfa_setup", d.PUBLIC["sms_otp_mfa_setup"], data, headers)
+        return t.GenericResponse.from_dict(res or {})
+
+    def totp_mfa_setup(
+        self, req: t.OtpMfaSetupRequest | None = None, headers: dict[str, str] | None = None
+    ) -> t.AuthToken:
+        data = req.to_dict() if req is not None else None
+        res = self._invoke("totp_mfa_setup", d.PUBLIC["totp_mfa_setup"], data, headers)
+        return t.AuthToken.from_dict(res or {})
+
+    # -- WebAuthn / passkeys ------------------------------------------------ #
+    def webauthn_registration_options(
+        self,
+        req: t.WebauthnRegistrationOptionsRequest | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> t.WebauthnRegistrationOptionsResponse:
+        data = req.to_dict() if req is not None else None
+        res = self._invoke(
+            "webauthn_registration_options",
+            d.PUBLIC["webauthn_registration_options"],
+            data,
+            headers,
+        )
+        return t.WebauthnRegistrationOptionsResponse.from_dict(res or {})
+
+    def webauthn_registration_verify(
+        self, req: t.WebauthnRegistrationVerifyRequest, headers: dict[str, str] | None = None
+    ) -> t.AuthToken:
+        res = self._invoke(
+            "webauthn_registration_verify",
+            d.PUBLIC["webauthn_registration_verify"],
+            req.to_dict(),
+            headers,
+        )
+        return t.AuthToken.from_dict(res or {})
+
+    def webauthn_login_options(
+        self,
+        req: t.WebauthnLoginOptionsRequest | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> t.WebauthnLoginOptionsResponse:
+        data = req.to_dict() if req is not None else None
+        res = self._invoke(
+            "webauthn_login_options", d.PUBLIC["webauthn_login_options"], data, headers
+        )
+        return t.WebauthnLoginOptionsResponse.from_dict(res or {})
+
+    def webauthn_login_verify(
+        self, req: t.WebauthnLoginVerifyRequest, headers: dict[str, str] | None = None
+    ) -> t.AuthToken:
+        res = self._invoke(
+            "webauthn_login_verify", d.PUBLIC["webauthn_login_verify"], req.to_dict(), headers
+        )
+        return t.AuthToken.from_dict(res or {})
+
+    def webauthn_delete_credential(
+        self, req: t.WebauthnDeleteCredentialRequest, headers: dict[str, str] | None = None
+    ) -> t.GenericResponse:
+        """Destructive: permanently deletes the registered passkey."""
+        res = self._invoke(
+            "webauthn_delete_credential",
+            d.PUBLIC["webauthn_delete_credential"],
+            req.to_dict(),
+            headers,
+        )
+        return t.GenericResponse.from_dict(res or {})
+
+    def webauthn_credentials(
+        self, headers: dict[str, str] | None = None
+    ) -> list[t.WebauthnCredentialInfo]:
+        """List the authenticated caller's own registered passkeys."""
+        res = self._invoke("webauthn_credentials", d.PUBLIC["webauthn_credentials"], None, headers)
+        items: list[Any] = res if isinstance(res, list) else []
+        return [t.WebauthnCredentialInfo.from_dict(x) for x in items if isinstance(x, dict)]
+
     # -- OAuth REST ------------------------------------------------------- #
     def get_token(self, req: t.GetTokenRequest) -> t.GetTokenResponse:
         """Exchange credentials for tokens at ``/oauth/token``.

@@ -1,4 +1,4 @@
-"""Admin sync/async parity + spec coverage of all 66 admin methods."""
+"""Admin sync/async parity + spec coverage of all admin methods."""
 
 from __future__ import annotations
 
@@ -6,7 +6,9 @@ from authorizer import _dispatch as d
 from authorizer.admin_client import AuthorizerAdminClient
 from authorizer.async_admin_client import AsyncAuthorizerAdminClient
 
-# 32 proto RPCs + 3 gql-only extras.
+# Proto RPCs (clients/trusted issuers/SAML IdP now full graphql+rest+grpc,
+# re-vendored from server HEAD ca628cee) + graphql-only extras (orgs/SSO/SCIM/
+# user_organizations/org_domains have no proto RPC on the server).
 ADMIN_METHODS = [
     "admin_login",
     "admin_logout",
@@ -43,8 +45,8 @@ ADMIN_METHODS = [
     "admin_signup",
     "update_env",
     "generate_jwt_keys",
-    # Machine-agent-identity ops (graphql-only until the vendored stubs are
-    # re-vendored; orgs/SSO/SCIM are graphql-only on the server too).
+    # Machine-agent-identity ops: clients + trusted issuers have proto RPCs
+    # (full graphql+rest+grpc); orgs/SSO/SCIM are graphql-only on the server.
     "create_client",
     "update_client",
     "delete_client",
@@ -56,6 +58,23 @@ ADMIN_METHODS = [
     "delete_trusted_issuer",
     "get_trusted_issuer",
     "trusted_issuers",
+    # SAML IdP (Authorizer as Identity Provider for downstream SPs) — proto RPCs.
+    "create_saml_service_provider",
+    "update_saml_service_provider",
+    "delete_saml_service_provider",
+    "get_saml_service_provider",
+    "list_saml_service_providers",
+    "rotate_saml_idp_cert",
+    "retire_saml_idp_key",
+    "list_saml_idp_keys",
+    "import_saml_sp_metadata",
+    # graphql-only: no proto RPC on the server.
+    "user_organizations",
+    "request_org_domain",
+    "verify_org_domain",
+    "add_verified_org_domain",
+    "delete_org_domain",
+    "org_domains",
     "create_organization",
     "update_organization",
     "delete_organization",
@@ -87,7 +106,7 @@ def test_both_admin_clients_expose_same_surface() -> None:
 
 def test_dispatch_table_covers_every_admin_method() -> None:
     assert set(d.ADMIN) == set(ADMIN_METHODS)
-    assert len(d.ADMIN) == 66
+    assert len(d.ADMIN) == len(ADMIN_METHODS)
 
 
 def test_protocol_availability_matches_spec() -> None:
@@ -99,6 +118,10 @@ def test_protocol_availability_matches_spec() -> None:
         assert d.ADMIN[name].protocols == ("rest", "grpc")
     # full coverage
     assert d.ADMIN["users"].protocols == ("graphql", "rest", "grpc")
-    # machine-agent-identity ops are graphql-only for now
-    for name in ("create_client", "trusted_issuers", "create_organization", "get_scim_endpoint"):
+    # machine-agent-identity ops (clients/trusted issuers/SAML IdP) have proto
+    # RPCs -- full coverage now that the stubs are re-vendored.
+    for name in ("create_client", "trusted_issuers", "create_saml_service_provider"):
+        assert d.ADMIN[name].protocols == ("graphql", "rest", "grpc")
+    # orgs/SSO/SCIM/user_organizations/org_domains are graphql-only on the server.
+    for name in ("create_organization", "get_scim_endpoint", "user_organizations", "org_domains"):
         assert d.ADMIN[name].protocols == ("graphql",)

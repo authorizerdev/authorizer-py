@@ -28,6 +28,17 @@ PUBLIC_METHODS = [
     "get_token",
     "revoke_token",
     "graphql_query",
+    "skip_mfa_setup",
+    "lock_mfa",
+    "email_otp_mfa_setup",
+    "sms_otp_mfa_setup",
+    "totp_mfa_setup",
+    "webauthn_registration_options",
+    "webauthn_registration_verify",
+    "webauthn_login_options",
+    "webauthn_login_verify",
+    "webauthn_delete_credential",
+    "webauthn_credentials",
 ]
 
 
