@@ -137,7 +137,7 @@ class AsyncAuthorizerAdminClient:
         return t.GenerateJWTKeysResponse.from_dict(res or {})
 
     # -- users ------------------------------------------------------------ #
-    async def users(self, req: t.PaginatedRequest | None = None) -> t.UsersResponse:
+    async def users(self, req: t.ListUsersRequest | None = None) -> t.UsersResponse:
         res = await self._invoke("users", d.ADMIN["users"], req.to_dict() if req else None)
         return t.UsersResponse.from_dict(res or {})
 
@@ -453,6 +453,125 @@ class AsyncAuthorizerAdminClient:
             "get_org_saml_connection", d.ADMIN["get_org_saml_connection"], req.to_dict()
         )
         return t.OrgSAMLConnection.from_dict(res or {})
+
+    # -- SAML IdP (Authorizer as Identity Provider for downstream SPs) ---- #
+    async def create_saml_service_provider(
+        self, req: t.CreateSAMLServiceProviderRequest
+    ) -> t.SAMLServiceProvider:
+        res = await self._invoke(
+            "create_saml_service_provider",
+            d.ADMIN["create_saml_service_provider"],
+            req.to_dict(),
+        )
+        return t.SAMLServiceProvider.from_dict(res or {})
+
+    async def update_saml_service_provider(
+        self, req: t.UpdateSAMLServiceProviderRequest
+    ) -> t.SAMLServiceProvider:
+        res = await self._invoke(
+            "update_saml_service_provider",
+            d.ADMIN["update_saml_service_provider"],
+            req.to_dict(),
+        )
+        return t.SAMLServiceProvider.from_dict(res or {})
+
+    async def delete_saml_service_provider(
+        self, req: t.SAMLServiceProviderRequest
+    ) -> t.GenericResponse:
+        """Destructive: the downstream SP can no longer be issued assertions."""
+        res = await self._invoke(
+            "delete_saml_service_provider",
+            d.ADMIN["delete_saml_service_provider"],
+            req.to_dict(),
+        )
+        return t.GenericResponse.from_dict(res or {})
+
+    async def get_saml_service_provider(
+        self, req: t.SAMLServiceProviderRequest
+    ) -> t.SAMLServiceProvider:
+        res = await self._invoke(
+            "get_saml_service_provider", d.ADMIN["get_saml_service_provider"], req.to_dict()
+        )
+        return t.SAMLServiceProvider.from_dict(res or {})
+
+    async def list_saml_service_providers(
+        self, req: t.ListSAMLServiceProvidersRequest
+    ) -> t.SAMLServiceProvidersResponse:
+        res = await self._invoke(
+            "list_saml_service_providers",
+            d.ADMIN["list_saml_service_providers"],
+            req.to_dict(),
+        )
+        return t.SAMLServiceProvidersResponse.from_dict(res or {})
+
+    async def rotate_saml_idp_cert(self, req: t.RotateSAMLIDPCertRequest) -> t.SAMLIDPKey:
+        """Generates a new current signing keypair; the previous key stays "active"."""
+        res = await self._invoke(
+            "rotate_saml_idp_cert", d.ADMIN["rotate_saml_idp_cert"], req.to_dict()
+        )
+        return t.SAMLIDPKey.from_dict(res or {})
+
+    async def retire_saml_idp_key(self, req: t.RetireSAMLIDPKeyRequest) -> t.GenericResponse:
+        """Destructive: the key stops appearing in IdP metadata. Cannot retire the current key."""
+        res = await self._invoke(
+            "retire_saml_idp_key", d.ADMIN["retire_saml_idp_key"], req.to_dict()
+        )
+        return t.GenericResponse.from_dict(res or {})
+
+    async def list_saml_idp_keys(self, req: t.ListSAMLIDPKeysRequest) -> list[t.SAMLIDPKey]:
+        res = await self._invoke(
+            "list_saml_idp_keys", d.ADMIN["list_saml_idp_keys"], req.to_dict()
+        )
+        # GraphQL returns a bare list; REST/gRPC wrap it as {"saml_idp_keys": [...]}.
+        items = res if isinstance(res, list) else (res or {}).get("saml_idp_keys", [])
+        return [t.SAMLIDPKey.from_dict(x) for x in items if isinstance(x, dict)]
+
+    async def import_saml_sp_metadata(
+        self, req: t.ImportSAMLSPMetadataRequest
+    ) -> t.SAMLSPMetadataParseResult:
+        """Parses pasted SP metadata XML; does NOT create a record or fetch a URL."""
+        res = await self._invoke(
+            "import_saml_sp_metadata", d.ADMIN["import_saml_sp_metadata"], req.to_dict()
+        )
+        return t.SAMLSPMetadataParseResult.from_dict(res or {})
+
+    # -- user organizations ------------------------------------------------- #
+    async def user_organizations(
+        self, req: t.UserOrganizationsRequest
+    ) -> t.UserOrganizationsResponse:
+        res = await self._invoke(
+            "user_organizations", d.ADMIN["user_organizations"], req.to_dict()
+        )
+        return t.UserOrganizationsResponse.from_dict(res or {})
+
+    # -- org domains (home-realm discovery) ---------------------------------- #
+    async def request_org_domain(self, req: t.RequestOrgDomainRequest) -> t.OrgDomainChallenge:
+        res = await self._invoke(
+            "request_org_domain", d.ADMIN["request_org_domain"], req.to_dict()
+        )
+        return t.OrgDomainChallenge.from_dict(res or {})
+
+    async def verify_org_domain(self, req: t.VerifyOrgDomainRequest) -> t.OrgDomain:
+        res = await self._invoke("verify_org_domain", d.ADMIN["verify_org_domain"], req.to_dict())
+        return t.OrgDomain.from_dict(res or {})
+
+    async def add_verified_org_domain(self, req: t.AddVerifiedOrgDomainRequest) -> t.OrgDomain:
+        """Super-admin only: trusted-asserts a domain as verified, skipping DNS challenge."""
+        res = await self._invoke(
+            "add_verified_org_domain", d.ADMIN["add_verified_org_domain"], req.to_dict()
+        )
+        return t.OrgDomain.from_dict(res or {})
+
+    async def delete_org_domain(self, req: t.DeleteOrgDomainRequest) -> t.GenericResponse:
+        """Destructive: the domain no longer routes logins to this organization."""
+        res = await self._invoke(
+            "delete_org_domain", d.ADMIN["delete_org_domain"], req.to_dict()
+        )
+        return t.GenericResponse.from_dict(res or {})
+
+    async def org_domains(self, req: t.ListOrgDomainsRequest) -> t.OrgDomainsResponse:
+        res = await self._invoke("org_domains", d.ADMIN["org_domains"], req.to_dict())
+        return t.OrgDomainsResponse.from_dict(res or {})
 
     # -- SCIM endpoints ------------------------------------------------------ #
     async def create_scim_endpoint(

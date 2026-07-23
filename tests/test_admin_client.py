@@ -335,14 +335,17 @@ def test_rotate_scim_token_returns_token_once() -> None:
     assert out.token == "bearer-once"
 
 
-def test_mai_methods_not_available_over_rest() -> None:
+def test_org_methods_not_available_over_rest() -> None:
+    # Organizations/SSO/SCIM/user_organizations/org_domains have no proto RPC
+    # on the server (unlike clients/trusted issuers/SAML IdP, which do) --
+    # graphql-only for now.
     with _admin("rest") as c:
         with pytest.raises(AuthorizerError) as ei:
-            c.create_client(t.CreateClientRequest(name="a", allowed_scopes=["s"]))
+            c.create_organization(t.CreateOrganizationRequest(name="acme"))
     assert "not available over rest" in str(ei.value)
     with _admin("rest") as c:
         with pytest.raises(AuthorizerError):
-            c.trusted_issuers()
+            c.organizations()
 
 
 @pytest.mark.asyncio

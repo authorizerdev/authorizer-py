@@ -9,12 +9,14 @@ USER_FRAGMENT = (
     "id email email_verified given_name family_name middle_name nickname "
     "preferred_username picture signup_methods gender birthdate phone_number "
     "phone_number_verified roles created_at updated_at is_multi_factor_auth_enabled "
-    "app_data revoked_timestamp"
+    "app_data revoked_timestamp has_skipped_mfa_setup_at mfa_locked_at enrolled_mfa_methods"
 )
 
 AUTH_TOKEN_FRAGMENT = (
     "message access_token expires_in refresh_token id_token "
     "should_show_email_otp_screen should_show_mobile_otp_screen should_show_totp_screen "
+    "should_offer_webauthn_mfa_verify should_offer_webauthn_mfa_setup "
+    "should_offer_email_otp_mfa_setup should_offer_sms_otp_mfa_setup "
     "authenticator_scanner_image authenticator_secret authenticator_recovery_codes "
     f"user {{ {USER_FRAGMENT} }}"
 )
@@ -109,6 +111,51 @@ LIST_PERMISSIONS = (
     "{ list_permissions(params: $data) { objects permissions { object relation } truncated } }"
 )
 
+# -- MFA setup / recovery ----------------------------------------------------- #
+SKIP_MFA_SETUP = (
+    "mutation skipMfaSetup($data: SkipMfaSetupRequest!) "
+    f"{{ skip_mfa_setup(params: $data) {{ {AUTH_TOKEN_FRAGMENT} }} }}"
+)
+LOCK_MFA = "mutation lockMfa($data: LockMfaRequest!) { lock_mfa(params: $data) { message } }"
+EMAIL_OTP_MFA_SETUP = (
+    "mutation emailOtpMfaSetup($data: OtpMfaSetupRequest) "
+    "{ email_otp_mfa_setup(params: $data) { message } }"
+)
+SMS_OTP_MFA_SETUP = (
+    "mutation smsOtpMfaSetup($data: OtpMfaSetupRequest) "
+    "{ sms_otp_mfa_setup(params: $data) { message } }"
+)
+TOTP_MFA_SETUP = (
+    "mutation totpMfaSetup($data: OtpMfaSetupRequest) "
+    f"{{ totp_mfa_setup(params: $data) {{ {AUTH_TOKEN_FRAGMENT} }} }}"
+)
+
+# -- WebAuthn / passkeys ------------------------------------------------------- #
+WEBAUTHN_CREDENTIAL_FRAGMENT = "id name transports created_at updated_at last_used_at"
+
+WEBAUTHN_REGISTRATION_OPTIONS = (
+    "mutation webauthnRegistrationOptions($email: String, $phone_number: String) "
+    "{ webauthn_registration_options(email: $email, phone_number: $phone_number) "
+    "{ options } }"
+)
+WEBAUTHN_REGISTRATION_VERIFY = (
+    "mutation webauthnRegistrationVerify($data: WebauthnRegistrationVerifyRequest!) "
+    f"{{ webauthn_registration_verify(params: $data) {{ {AUTH_TOKEN_FRAGMENT} }} }}"
+)
+WEBAUTHN_LOGIN_OPTIONS = (
+    "mutation webauthnLoginOptions($email: String) "
+    "{ webauthn_login_options(email: $email) { options } }"
+)
+WEBAUTHN_LOGIN_VERIFY = (
+    "mutation webauthnLoginVerify($data: WebauthnLoginVerifyRequest!) "
+    f"{{ webauthn_login_verify(params: $data) {{ {AUTH_TOKEN_FRAGMENT} }} }}"
+)
+WEBAUTHN_DELETE_CREDENTIAL = (
+    "mutation webauthnDeleteCredential($id: ID!) "
+    "{ webauthn_delete_credential(id: $id) { message } }"
+)
+WEBAUTHN_CREDENTIALS = f"query {{ webauthn_credentials {{ {WEBAUTHN_CREDENTIAL_FRAGMENT} }} }}"
+
 # --------------------------------------------------------------------------- #
 # Admin (`_`-prefixed) operations. GraphQL fragments mirror the admin schema.
 # --------------------------------------------------------------------------- #
@@ -136,7 +183,7 @@ ADMIN_SIGNUP = (
     "{ _admin_signup(params: $data) { message } }"
 )
 ADMIN_USERS = (
-    "query adminUsers($data: PaginatedRequest) "
+    "query adminUsers($data: ListUsersRequest) "
     f"{{ _users(params: $data) {{ {PAGINATION_FRAGMENT} users {{ {USER_FRAGMENT} }} }} }}"
 )
 ADMIN_USER = (
@@ -257,7 +304,7 @@ ADMIN_FGA_EXPAND = (
 # Machine-agent-identity admin ops: clients (service accounts), trusted
 # issuers, organizations, org SSO connections, SCIM endpoints.
 # --------------------------------------------------------------------------- #
-CLIENT_FRAGMENT = "id name description allowed_scopes is_active created_at updated_at"
+CLIENT_FRAGMENT = "id client_id name description allowed_scopes is_active created_at updated_at"
 TRUSTED_ISSUER_FRAGMENT = (
     "id service_account_id name issuer_url key_source_type jwks_url expected_aud "
     "subject_claim allowed_subjects issuer_type is_active spiffe_refresh_hint_seconds "
@@ -404,4 +451,83 @@ ADMIN_DELETE_SCIM_ENDPOINT = (
 ADMIN_GET_SCIM_ENDPOINT = (
     "query adminScimEndpoint($data: ScimEndpointRequest!) "
     f"{{ _scim_endpoint(params: $data) {{ {SCIM_ENDPOINT_FRAGMENT} }} }}"
+)
+
+# --------------------------------------------------------------------------- #
+# SAML IdP (Authorizer as Identity Provider for downstream SPs), user
+# organizations, and org domains (home-realm discovery).
+# --------------------------------------------------------------------------- #
+SAML_SERVICE_PROVIDER_FRAGMENT = (
+    "id org_id name entity_id acs_url sp_cert_pem name_id_format mapped_attributes "
+    "allow_idp_initiated is_active created_at updated_at"
+)
+SAML_IDP_KEY_FRAGMENT = "id org_id cert_pem algorithm status created_at updated_at"
+USER_ORGANIZATION_FRAGMENT = f"organization {{ {ORGANIZATION_FRAGMENT} }} roles"
+ORG_DOMAIN_FRAGMENT = "domain org_id verified_at created_at updated_at"
+ORG_DOMAIN_CHALLENGE_FRAGMENT = "domain record_type record_name record_value"
+
+ADMIN_CREATE_SAML_SERVICE_PROVIDER = (
+    "mutation adminCreateSamlServiceProvider($data: CreateSAMLServiceProviderRequest!) "
+    f"{{ _create_saml_service_provider(params: $data) {{ {SAML_SERVICE_PROVIDER_FRAGMENT} }} }}"
+)
+ADMIN_UPDATE_SAML_SERVICE_PROVIDER = (
+    "mutation adminUpdateSamlServiceProvider($data: UpdateSAMLServiceProviderRequest!) "
+    f"{{ _update_saml_service_provider(params: $data) {{ {SAML_SERVICE_PROVIDER_FRAGMENT} }} }}"
+)
+ADMIN_DELETE_SAML_SERVICE_PROVIDER = (
+    "mutation adminDeleteSamlServiceProvider($data: SAMLServiceProviderRequest!) "
+    "{ _delete_saml_service_provider(params: $data) { message } }"
+)
+ADMIN_GET_SAML_SERVICE_PROVIDER = (
+    "query adminSamlServiceProvider($data: SAMLServiceProviderRequest!) "
+    f"{{ _saml_service_provider(params: $data) {{ {SAML_SERVICE_PROVIDER_FRAGMENT} }} }}"
+)
+ADMIN_LIST_SAML_SERVICE_PROVIDERS = (
+    "query adminListSamlServiceProviders($data: ListSAMLServiceProvidersRequest!) "
+    f"{{ _list_saml_service_providers(params: $data) {{ {PAGINATION_FRAGMENT} "
+    f"saml_service_providers {{ {SAML_SERVICE_PROVIDER_FRAGMENT} }} }} }}"
+)
+ADMIN_ROTATE_SAML_IDP_CERT = (
+    "mutation adminRotateSamlIdpCert($data: RotateSAMLIDPCertRequest!) "
+    f"{{ _rotate_saml_idp_cert(params: $data) {{ {SAML_IDP_KEY_FRAGMENT} }} }}"
+)
+ADMIN_RETIRE_SAML_IDP_KEY = (
+    "mutation adminRetireSamlIdpKey($data: RetireSAMLIDPKeyRequest!) "
+    "{ _retire_saml_idp_key(params: $data) { message } }"
+)
+ADMIN_LIST_SAML_IDP_KEYS = (
+    "query adminListSamlIdpKeys($data: ListSAMLIDPKeysRequest!) "
+    f"{{ _list_saml_idp_keys(params: $data) {{ {SAML_IDP_KEY_FRAGMENT} }} }}"
+)
+ADMIN_IMPORT_SAML_SP_METADATA = (
+    "mutation adminImportSamlSpMetadata($data: ImportSAMLSPMetadataRequest!) "
+    "{ _import_saml_sp_metadata(params: $data) { entity_id acs_url certificate } }"
+)
+
+ADMIN_USER_ORGANIZATIONS = (
+    "query adminUserOrganizations($data: UserOrganizationsRequest!) "
+    f"{{ _user_organizations(params: $data) {{ {PAGINATION_FRAGMENT} "
+    f"user_organizations {{ {USER_ORGANIZATION_FRAGMENT} }} }} }}"
+)
+
+ADMIN_REQUEST_ORG_DOMAIN = (
+    "mutation adminRequestOrgDomain($data: RequestOrgDomainRequest!) "
+    f"{{ _request_org_domain(params: $data) {{ {ORG_DOMAIN_CHALLENGE_FRAGMENT} }} }}"
+)
+ADMIN_VERIFY_ORG_DOMAIN = (
+    "mutation adminVerifyOrgDomain($data: VerifyOrgDomainRequest!) "
+    f"{{ _verify_org_domain(params: $data) {{ {ORG_DOMAIN_FRAGMENT} }} }}"
+)
+ADMIN_ADD_VERIFIED_ORG_DOMAIN = (
+    "mutation adminAddVerifiedOrgDomain($data: AddVerifiedOrgDomainRequest!) "
+    f"{{ _add_verified_org_domain(params: $data) {{ {ORG_DOMAIN_FRAGMENT} }} }}"
+)
+ADMIN_DELETE_ORG_DOMAIN = (
+    "mutation adminDeleteOrgDomain($data: DeleteOrgDomainRequest!) "
+    "{ _delete_org_domain(params: $data) { message } }"
+)
+ADMIN_ORG_DOMAINS = (
+    "query adminOrgDomains($data: ListOrgDomainsRequest!) "
+    f"{{ _org_domains(params: $data) {{ {PAGINATION_FRAGMENT} "
+    f"org_domains {{ {ORG_DOMAIN_FRAGMENT} }} }} }}"
 )
