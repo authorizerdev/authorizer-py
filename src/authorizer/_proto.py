@@ -70,18 +70,6 @@ def _wrap(value: Any, descriptor: Any) -> Any:
         if field.message_type.full_name == "authorizer.v1.AppData":
             # SDK contract: free-form maps are flat; wrap into the proto AppData.
             out[key] = {"value": val} if isinstance(val, dict) else val
-        elif (
-            field.message_type.full_name == "authorizer.v1.PaginationRequest"
-            and isinstance(val, dict)
-            and set(val) == {"pagination"}
-            and isinstance(val["pagination"], dict)
-        ):
-            # Several GraphQL ListXRequest inputs type `pagination` as
-            # PaginatedRequest (itself wrapping PaginationRequest) rather than
-            # PaginationRequest directly — a pre-existing schema quirk. Proto
-            # flattens straight to PaginationRequest; collapse the redundant
-            # wrapper so REST/gRPC callers get the same page/limit as GraphQL.
-            out[key] = _wrap(val["pagination"], field.message_type)
         elif isinstance(val, list):
             out[key] = [_wrap(v, field.message_type) for v in val]
         else:
