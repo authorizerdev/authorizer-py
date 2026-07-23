@@ -116,7 +116,6 @@ class SignUpRequest(_Request):
     roles: list[str] | None = None
     scope: list[str] | None = None
     redirect_uri: str | None = None
-    is_multi_factor_auth_enabled: bool | None = None
     app_data: dict[str, Any] | None = None
     state: str | None = None
 
