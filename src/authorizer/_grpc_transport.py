@@ -83,7 +83,7 @@ def make_async_channel(authorizer_url: str, grpc_endpoint: str = "") -> Any:
 def load_stubs() -> Any:
     """Import the vendored generated stub modules (lazily)."""
     _require_grpc()
-    from ._grpc.authorizer.v1 import (
+    from authorizer_proto.authorizer.v1 import (
         admin_pb2,
         admin_pb2_grpc,
         authorizer_pb2,

@@ -13,7 +13,7 @@ from typing import Any
 
 def _load_pb2() -> tuple[Any, Any]:
     """Import the vendored proto message modules (admin + public)."""
-    from ._grpc.authorizer.v1 import admin_pb2, authorizer_pb2
+    from authorizer_proto.authorizer.v1 import admin_pb2, authorizer_pb2
 
     return admin_pb2, authorizer_pb2
 
