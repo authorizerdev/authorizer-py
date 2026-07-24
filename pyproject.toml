@@ -23,13 +23,15 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Typing :: Typed",
 ]
-# protobuf is a base dependency: the REST protocol parses grpc-gateway responses
-# with protojson (int64-as-string + single-field wrappers) using the vendored
-# proto message types. grpcio is only needed for the optional ``grpc`` protocol.
-dependencies = ["httpx>=0.24,<1", "protobuf>=4"]
+# authorizer-proto ships the generated proto message + gRPC stubs (was vendored
+# under _grpc). protobuf stays a direct dep because the REST protocol parses
+# grpc-gateway responses with protojson (int64-as-string + single-field wrappers)
+# using those message types. grpcio is only needed for the optional ``grpc``
+# protocol (pulled via authorizer-proto[grpc]).
+dependencies = ["httpx>=0.24,<1", "protobuf>=4", "authorizer-proto>=0.1.0"]
 
 [project.optional-dependencies]
-grpc = ["grpcio>=1.60", "protobuf>=4"]
+grpc = ["authorizer-proto[grpc]>=0.1.0", "grpcio>=1.60", "protobuf>=4"]
 dev = [
     "pytest>=7",
     "pytest-asyncio>=0.23",
@@ -51,8 +53,6 @@ packages = ["src/authorizer"]
 [tool.ruff]
 line-length = 100
 target-version = "py39"
-# Vendored generated gRPC/protobuf stubs — never lint.
-extend-exclude = ["src/authorizer/_grpc"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "W"]
@@ -61,11 +61,10 @@ select = ["E", "F", "I", "UP", "B", "W"]
 python_version = "3.9"
 strict = true
 warn_unused_ignores = true
-# Vendored generated gRPC/protobuf stubs — not type-checked.
-exclude = ["src/authorizer/_grpc/"]
 
+# Generated proto/gRPC stubs (authorizer-proto package) — untyped, not checked.
 [[tool.mypy.overrides]]
-module = "authorizer._grpc.*"
+module = "authorizer_proto.*"
 ignore_errors = true
 ignore_missing_imports = true
 
