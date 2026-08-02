@@ -131,18 +131,42 @@ def test_fga_read_tuples() -> None:
     assert out.continuation_token == "x"
 
 
-# -- graphql-unsupported methods --------------------------------------------- #
-def test_admin_meta_not_available_over_graphql() -> None:
-    with _admin("graphql") as c:
-        with pytest.raises(AuthorizerError) as ei:
-            c.admin_meta()
-    assert "not available over graphql" in str(ei.value)
+# -- methods that used to be rest/grpc-only ---------------------------------- #
+# admin_logout/session/meta and fga_get_model/fga_reset all have a graphql op on
+# the server; the SDK simply had no query for them. They now span all three.
 
 
-def test_fga_reset_not_available_over_graphql() -> None:
+@respx.mock
+def test_admin_meta_over_graphql() -> None:
+    respx.post(f"{URL}/graphql").mock(
+        return_value=Response(
+            200,
+            json={"data": {"_admin_meta": {"roles": ["user"], "default_roles": ["user"]}}},
+        )
+    )
     with _admin("graphql") as c:
-        with pytest.raises(AuthorizerError):
-            c.fga_reset()
+        out = c.admin_meta()
+    assert out.roles == ["user"]
+
+
+@respx.mock
+def test_fga_get_model_over_graphql() -> None:
+    respx.post(f"{URL}/graphql").mock(
+        return_value=Response(200, json={"data": {"_fga_get_model": {"id": "m1", "dsl": "model"}}})
+    )
+    with _admin("graphql") as c:
+        out = c.fga_get_model()
+    assert out.id == "m1"
+    assert out.dsl == "model"
+
+
+@respx.mock
+def test_fga_reset_over_graphql() -> None:
+    respx.post(f"{URL}/graphql").mock(
+        return_value=Response(200, json={"data": {"_fga_reset": {"message": "reset"}}})
+    )
+    with _admin("graphql") as c:
+        assert c.fga_reset().message == "reset"
 
 
 def test_admin_signup_not_available_over_rest() -> None:
@@ -335,17 +359,82 @@ def test_rotate_scim_token_returns_token_once() -> None:
     assert out.token == "bearer-once"
 
 
-def test_org_methods_not_available_over_rest() -> None:
-    # Organizations/SSO/SCIM/user_organizations/org_domains have no proto RPC
-    # on the server (unlike clients/trusted issuers/SAML IdP, which do) --
-    # graphql-only for now.
+# Organizations / org SSO / SCIM / org domains gained proto RPCs and REST
+# bindings in server 2.4.0 (PR #739); they used to be graphql-only. The REST
+# response envelope differs per endpoint, so each shape below pins the unwrap:
+# a single nested object is unwrapped, while a flat message (a paginated list,
+# or one carrying two top-level fields) is parsed whole.
+
+
+@respx.mock
+def test_create_organization_rest_unwraps_nested_object() -> None:
+    respx.post(f"{URL}/v1/admin/create_organization").mock(
+        return_value=Response(200, json={"organization": {"id": "o1", "name": "acme"}})
+    )
     with _admin("rest") as c:
-        with pytest.raises(AuthorizerError) as ei:
-            c.create_organization(t.CreateOrganizationRequest(name="acme"))
-    assert "not available over rest" in str(ei.value)
+        out = c.create_organization(t.CreateOrganizationRequest(name="acme"))
+    assert out.id == "o1"
+    assert out.name == "acme"
+
+
+@respx.mock
+def test_organizations_rest_reads_flat_paginated_message() -> None:
+    respx.post(f"{URL}/v1/admin/organizations").mock(
+        return_value=Response(
+            200,
+            json={"organizations": [{"id": "o1", "name": "acme"}], "pagination": {"total": 1}},
+        )
+    )
     with _admin("rest") as c:
-        with pytest.raises(AuthorizerError):
-            c.organizations()
+        out = c.organizations()
+    assert out.organizations[0].id == "o1"
+    assert out.pagination.total == 1
+
+
+@respx.mock
+def test_request_org_domain_rest_unwraps_challenge() -> None:
+    respx.post(f"{URL}/v1/admin/request_org_domain").mock(
+        return_value=Response(
+            200,
+            json={
+                "challenge": {
+                    "domain": "acme.com",
+                    "record_type": "TXT",
+                    "record_name": "_authorizer.acme.com",
+                    "record_value": "authorizer-verify=abc",
+                }
+            },
+        )
+    )
+    with _admin("rest") as c:
+        out = c.request_org_domain(t.RequestOrgDomainRequest(org_id="o1", domain="acme.com"))
+    assert out.domain == "acme.com"
+    assert out.record_value == "authorizer-verify=abc"
+
+
+@respx.mock
+def test_get_scim_endpoint_rest_unwraps_nested_object() -> None:
+    respx.post(f"{URL}/v1/admin/scim_endpoint").mock(
+        return_value=Response(200, json={"scim_endpoint": {"id": "s1", "org_id": "o1"}})
+    )
+    with _admin("rest") as c:
+        out = c.get_scim_endpoint(t.ScimEndpointRequest(org_id="o1"))
+    assert out.id == "s1"
+
+
+@respx.mock
+def test_create_scim_endpoint_rest_keeps_token_beside_endpoint() -> None:
+    # Two top-level fields: unwrapping either one would drop the other, and the
+    # token is shown exactly once by the server.
+    respx.post(f"{URL}/v1/admin/create_scim_endpoint").mock(
+        return_value=Response(
+            200, json={"scim_endpoint": {"id": "s1", "org_id": "o1"}, "token": "bearer-once"}
+        )
+    )
+    with _admin("rest") as c:
+        out = c.create_scim_endpoint(t.CreateScimEndpointRequest(org_id="o1"))
+    assert out.scim_endpoint.id == "s1"
+    assert out.token == "bearer-once"
 
 
 @pytest.mark.asyncio

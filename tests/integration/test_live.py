@@ -371,16 +371,23 @@ def test_admin_email_template_lifecycle(admin: AuthorizerAdminClient, protocol: 
             admin.delete_email_template(t.DeleteEmailTemplateRequest(id=created_id))
 
 
-# -- admin meta / fga get-model (rest + grpc only) --------------------------- #
-def test_admin_meta_rest_grpc(protocol: str) -> None:
-    if protocol == "graphql":
-        with pytest.raises(AuthorizerError) as exc:
-            AuthorizerAdminClient(URL, ADMIN_SECRET, protocol="graphql").admin_meta()
-        assert "not available over graphql" in str(exc.value)
-        return
+# -- admin meta / session / logout / fga get-model ---------------------------- #
+# These were rest+grpc-only in the SDK despite having a GraphQL op on the
+# server; the SDK simply carried no query for them. All three now agree.
+def test_admin_meta_all_protocols(protocol: str) -> None:
     c = AuthorizerAdminClient(URL, ADMIN_SECRET, protocol=protocol, grpc_endpoint=GRPC)
     try:
-        assert isinstance(c.admin_meta().roles, list)
+        meta = c.admin_meta()
+        assert isinstance(meta.roles, list)
+        assert meta.roles, f"admin_meta returned no roles over {protocol}"
+        # REST/gRPC nest the payload under admin_meta while GraphQL returns it
+        # directly, so a wrong unwrap shows up as an empty dataclass here.
+        assert isinstance(meta.default_roles, list)
+
+        model = c.fga_get_model()
+        assert model is not None
+
+        assert c.admin_logout().message
     finally:
         c.close()
 
@@ -454,3 +461,234 @@ def test_fga_read_list_expand(admin: AuthorizerAdminClient, fga_seed: None) -> N
     assert "user:1" in users.users
     expand = admin.fga_expand(t.FgaExpandRequest(relation="reader", object="document:1"))
     assert expand is not None
+
+
+# --------------------------------------------------------------------------- #
+# Organizations / org SSO / SCIM / org domains / WebAuthn.
+#
+# These were graphql-only until server 2.4.0 (PR #739) gave them proto RPCs and
+# REST bindings. Each test below runs over EVERY configured protocol, so a wrong
+# REST path, a wrong gRPC request message, or a wrong response unwrap fails here
+# rather than in a user's application. The unwrap is the subtle part: some
+# responses nest the payload under a single field (organization, org_domain,
+# challenge, scim_endpoint) while others are read whole (paginated lists, and
+# the SCIM create/rotate pair that carries endpoint + one-time token).
+# --------------------------------------------------------------------------- #
+
+
+# A throwaway self-signed certificate. The server parses idp_certificate as
+# real X.509 (pem.Decode + x509.ParseCertificate), so a placeholder string
+# is rejected before the transport under test is ever exercised.
+_SAML_CERT = """-----BEGIN CERTIFICATE-----
+MIIDFTCCAf2gAwIBAgIUM08nMREFVxRb0V5HNytgixo/YcAwDQYJKoZIhvcNAQEL
+BQAwGjEYMBYGA1UEAwwPaWRwLmV4YW1wbGUuY29tMB4XDTI2MDgwMTE1MzcwOVoX
+DTM2MDcyOTE1MzcwOVowGjEYMBYGA1UEAwwPaWRwLmV4YW1wbGUuY29tMIIBIjAN
+BgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2x8x+nTIA0Xkv4ylrzeVOiS1uN5J
+1rBtl2mJsS1jtfMw541MEgsE42PiVqkOAtp7bJ5GVodVB/y64p/ZBvSU6VUL6JFe
+oZK1zDl1Q0leA/29tHwOq8XeQYx6dnzJpXzc453qR8qyeyVHIqQH8D3DLyyWb8EB
+cXLHYvNb9ERK/c290//sfhbSvFVNSZdEr3fBOL8eHAIb0uEpQWf4ifBAdhXv3GOu
+zIpBTMb6T5y/S9XWOXINiTkLeXLKzFJVv5DpaKTOVoDguFqdFo8hlwu4Au3s8Op8
+Xqz2dsqk/SIlML4oF9dMf0h9x03ESRpEb+BcIzql3Mm2/TNZro7I9jqoFQIDAQAB
+o1MwUTAdBgNVHQ4EFgQUq/fY8PQG/MIPKWhFG6Vu+PMq7CgwHwYDVR0jBBgwFoAU
+q/fY8PQG/MIPKWhFG6Vu+PMq7CgwDwYDVR0TAQH/BAUwAwEB/zANBgkqhkiG9w0B
+AQsFAAOCAQEAVQnSp7frzPyst8aycy6oNWd/Koqrj+pMimJhaFeJgBBSp0VKdQwK
+I0xkYzvIEAW/GsodywnZnE+sWyE9V4LHyLEX2pCB54KEId7yeG904eGoArlbUtly
+e3uapbyT4odrectwITZ4lh/GiArjb2xVDKWpjkZwdeDvJHkWfxMRh6lwEjTgSXFl
+pXH0lkasYzdXwqimSegLxLFEyPEy7Mzd0sjLAdk//9fUVtP2i4y2rQ6qBT4ZGJvB
+R9gPaZ42FDBPfaHiQCGbxPsGGYrMSLyqaX8yH76TqmV/jlq8bBMD9hRYd4NgJSQ+
+of3FVYBQUyAPQt+7k6zUAppYVYdknfsM1Q==
+-----END CERTIFICATE-----"""
+
+
+def test_admin_organization_lifecycle(admin: AuthorizerAdminClient, protocol: str) -> None:
+    name = _unique("org")
+    org = admin.create_organization(t.CreateOrganizationRequest(name=name))
+    assert org.id, f"create_organization returned no id over {protocol}"
+    assert org.name == name
+    try:
+        fetched = admin.get_organization(t.OrganizationRequest(id=org.id))
+        assert fetched.id == org.id
+        assert fetched.name == name
+
+        renamed = admin.update_organization(
+            t.UpdateOrganizationRequest(id=org.id, display_name="Renamed")
+        )
+        assert renamed.display_name == "Renamed"
+
+        page = admin.organizations(t.ListOrganizationsRequest())
+        assert isinstance(page.organizations, list)
+        assert any(o.id == org.id for o in page.organizations)
+        assert page.pagination.total >= 1
+    finally:
+        assert admin.delete_organization(t.OrganizationRequest(id=org.id)).message
+
+
+def test_admin_org_member_lifecycle(
+    admin: AuthorizerAdminClient, client: AuthorizerClient, protocol: str
+) -> None:
+    org = admin.create_organization(t.CreateOrganizationRequest(name=_unique("org-mem")))
+    email = f"{_unique('member')}@example.com"
+    signup = client.signup(
+        t.SignUpRequest(email=email, password=PASSWORD, confirm_password=PASSWORD)
+    )
+    user_id = signup.user.id
+    try:
+        member = admin.add_org_member(
+            t.AddOrgMemberRequest(org_id=org.id, user_id=user_id, roles=["authorizer:org_admin"])
+        )
+        assert member.user_id == user_id
+        assert "authorizer:org_admin" in member.roles
+
+        page = admin.org_members(t.ListOrgMembersRequest(org_id=org.id))
+        assert any(m.user_id == user_id for m in page.org_members)
+
+        orgs_of_user = admin.user_organizations(t.UserOrganizationsRequest(user_id=user_id))
+        assert any(uo.organization.id == org.id for uo in orgs_of_user.user_organizations)
+
+        assert admin.remove_org_member(
+            t.RemoveOrgMemberRequest(org_id=org.id, user_id=user_id)
+        ).message
+    finally:
+        admin.delete_organization(t.OrganizationRequest(id=org.id))
+        admin.delete_user(t.DeleteUserRequest(email=email))
+
+
+def test_admin_org_domain_lifecycle(admin: AuthorizerAdminClient, protocol: str) -> None:
+    org = admin.create_organization(t.CreateOrganizationRequest(name=_unique("org-dom")))
+    domain = f"{_unique('d')}.example.com"
+    try:
+        challenge = admin.request_org_domain(
+            t.RequestOrgDomainRequest(org_id=org.id, domain=domain)
+        )
+        # Unwrapped from `challenge`; a wrong unwrap yields an empty dataclass.
+        assert challenge.domain == domain
+        assert challenge.record_value, f"no DNS challenge value over {protocol}"
+
+        # DNS can't be satisfied here, so assert the verified path via the
+        # super-admin trusted-assert entry point instead.
+        added = admin.add_verified_org_domain(
+            t.AddVerifiedOrgDomainRequest(org_id=org.id, domain=domain)
+        )
+        assert added.domain == domain
+        assert added.org_id == org.id
+
+        page = admin.org_domains(t.ListOrgDomainsRequest(org_id=org.id))
+        assert any(d.domain == domain for d in page.org_domains)
+
+        assert admin.delete_org_domain(t.DeleteOrgDomainRequest(domain=domain)).message
+    finally:
+        admin.delete_organization(t.OrganizationRequest(id=org.id))
+
+
+def test_admin_org_oidc_connection_lifecycle(
+    admin: AuthorizerAdminClient, protocol: str
+) -> None:
+    org = admin.create_organization(t.CreateOrganizationRequest(name=_unique("org-oidc")))
+    try:
+        conn = admin.create_org_oidc_connection(
+            t.CreateOrgOIDCConnectionRequest(
+                org_id=org.id,
+                name="idp",
+                issuer_url="https://accounts.google.com",
+                client_id="cid",
+                client_secret="csecret",
+            )
+        )
+        assert conn.id, f"create_org_oidc_connection returned no id over {protocol}"
+        assert conn.issuer_url == "https://accounts.google.com"
+        # The upstream client_secret must never come back on any transport.
+        assert not hasattr(conn, "client_secret")
+
+        fetched = admin.get_org_oidc_connection(t.OrgOIDCConnectionRequest(id=conn.id))
+        assert fetched.id == conn.id
+
+        updated = admin.update_org_oidc_connection(
+            t.UpdateOrgOIDCConnectionRequest(id=conn.id, name="idp-renamed")
+        )
+        assert updated.name == "idp-renamed"
+
+        assert admin.delete_org_oidc_connection(
+            t.OrgOIDCConnectionRequest(id=conn.id)
+        ).message
+    finally:
+        admin.delete_organization(t.OrganizationRequest(id=org.id))
+
+
+def test_admin_org_saml_connection_lifecycle(
+    admin: AuthorizerAdminClient, protocol: str
+) -> None:
+    org = admin.create_organization(t.CreateOrganizationRequest(name=_unique("org-saml")))
+    try:
+        conn = admin.create_org_saml_connection(
+            t.CreateOrgSAMLConnectionRequest(
+                org_id=org.id,
+                name="saml-idp",
+                idp_entity_id="urn:idp:entity",
+                idp_sso_url="https://idp.example.com/sso",
+                idp_certificate=_SAML_CERT,
+            )
+        )
+        assert conn.id, f"create_org_saml_connection returned no id over {protocol}"
+        # Distinct values, so a projector that swapped two fields is caught.
+        assert conn.idp_entity_id == "urn:idp:entity"
+        assert conn.idp_sso_url == "https://idp.example.com/sso"
+
+        fetched = admin.get_org_saml_connection(t.OrgSAMLConnectionRequest(id=conn.id))
+        assert fetched.idp_entity_id == "urn:idp:entity"
+
+        updated = admin.update_org_saml_connection(
+            t.UpdateOrgSAMLConnectionRequest(id=conn.id, name="saml-renamed")
+        )
+        assert updated.name == "saml-renamed"
+
+        assert admin.delete_org_saml_connection(
+            t.OrgSAMLConnectionRequest(id=conn.id)
+        ).message
+    finally:
+        admin.delete_organization(t.OrganizationRequest(id=org.id))
+
+
+def test_admin_scim_endpoint_lifecycle(admin: AuthorizerAdminClient, protocol: str) -> None:
+    org = admin.create_organization(t.CreateOrganizationRequest(name=_unique("org-scim")))
+    try:
+        created = admin.create_scim_endpoint(t.CreateScimEndpointRequest(org_id=org.id))
+        # Two top-level fields: unwrapping either would silently drop the other.
+        assert created.scim_endpoint.id, f"no scim endpoint id over {protocol}"
+        assert created.token, "the one-time SCIM bearer token was not returned"
+        first_token = created.token
+
+        fetched = admin.get_scim_endpoint(t.ScimEndpointRequest(org_id=org.id))
+        assert fetched.id == created.scim_endpoint.id
+
+        rotated = admin.rotate_scim_token(t.ScimEndpointRequest(org_id=org.id))
+        assert rotated.token and rotated.token != first_token
+
+        assert admin.delete_scim_endpoint(t.ScimEndpointRequest(org_id=org.id)).message
+    finally:
+        admin.delete_organization(t.OrganizationRequest(id=org.id))
+
+
+def test_webauthn_options_and_credentials(
+    client: AuthorizerClient, admin: AuthorizerAdminClient, protocol: str
+) -> None:
+    """WebAuthn ceremonies over every protocol.
+
+    Only the option-issuing and listing halves are exercised: completing a
+    ceremony needs a real authenticator to sign the challenge.
+    """
+    email = f"{_unique('passkey')}@example.com"
+    signup = client.signup(
+        t.SignUpRequest(email=email, password=PASSWORD, confirm_password=PASSWORD)
+    )
+    bearer = {"Authorization": f"Bearer {signup.access_token}"}
+    try:
+        opts = client.webauthn_registration_options(headers=bearer)
+        assert opts.options, f"no registration options over {protocol}"
+        assert "challenge" in opts.options
+
+        creds = client.webauthn_credentials(headers=bearer)
+        # Unwrapped from `webauthn_credentials`; a wrong unwrap gives a non-list.
+        assert isinstance(creds, list)
+        assert creds == []  # nothing registered yet
+    finally:
+        admin.delete_user(t.DeleteUserRequest(email=email))
