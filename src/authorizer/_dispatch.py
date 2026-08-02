@@ -143,24 +143,43 @@ PUBLIC: dict[str, MethodSpec] = {
         "SmsOtpMfaSetup", "SmsOtpMfaSetupRequest", None,
     ),
     # WebAuthn/passkeys + TOTP setup: graphql-only on the server (no proto RPC).
-    "totp_mfa_setup": MethodSpec(GQL_ONLY, q.TOTP_MFA_SETUP, "totp_mfa_setup"),
+    "totp_mfa_setup": MethodSpec(
+        ALL, q.TOTP_MFA_SETUP, "totp_mfa_setup", "POST", "/v1/totp_mfa_setup", None,
+        "TotpMfaSetup", "TotpMfaSetupRequest", None,
+    ),
     "webauthn_registration_options": MethodSpec(
-        GQL_ONLY, q.WEBAUTHN_REGISTRATION_OPTIONS, "webauthn_registration_options",
+        ALL, q.WEBAUTHN_REGISTRATION_OPTIONS, "webauthn_registration_options",
+        "POST", "/v1/webauthn_registration_options", None,
+        "WebauthnRegistrationOptions", "WebauthnRegistrationOptionsRequest", None,
         gql_flat_vars=True,
     ),
     "webauthn_registration_verify": MethodSpec(
-        GQL_ONLY, q.WEBAUTHN_REGISTRATION_VERIFY, "webauthn_registration_verify"
+        ALL, q.WEBAUTHN_REGISTRATION_VERIFY, "webauthn_registration_verify",
+        "POST", "/v1/webauthn_registration_verify", None,
+        "WebauthnRegistrationVerify", "WebauthnRegistrationVerifyRequest", None,
     ),
     "webauthn_login_options": MethodSpec(
-        GQL_ONLY, q.WEBAUTHN_LOGIN_OPTIONS, "webauthn_login_options", gql_flat_vars=True
+        ALL, q.WEBAUTHN_LOGIN_OPTIONS, "webauthn_login_options",
+        "POST", "/v1/webauthn_login_options", None,
+        "WebauthnLoginOptions", "WebauthnLoginOptionsRequest", None,
+        gql_flat_vars=True,
     ),
     "webauthn_login_verify": MethodSpec(
-        GQL_ONLY, q.WEBAUTHN_LOGIN_VERIFY, "webauthn_login_verify"
+        ALL, q.WEBAUTHN_LOGIN_VERIFY, "webauthn_login_verify",
+        "POST", "/v1/webauthn_login_verify", None,
+        "WebauthnLoginVerify", "WebauthnLoginVerifyRequest", None,
     ),
     "webauthn_delete_credential": MethodSpec(
-        GQL_ONLY, q.WEBAUTHN_DELETE_CREDENTIAL, "webauthn_delete_credential", gql_flat_vars=True
+        ALL, q.WEBAUTHN_DELETE_CREDENTIAL, "webauthn_delete_credential",
+        "POST", "/v1/webauthn_delete_credential", None,
+        "WebauthnDeleteCredential", "WebauthnDeleteCredentialRequest", None,
+        gql_flat_vars=True,
     ),
-    "webauthn_credentials": MethodSpec(GQL_ONLY, q.WEBAUTHN_CREDENTIALS, "webauthn_credentials"),
+    "webauthn_credentials": MethodSpec(
+        ALL, q.WEBAUTHN_CREDENTIALS, "webauthn_credentials",
+        "POST", "/v1/webauthn_credentials", "webauthn_credentials",
+        "WebauthnCredentials", "WebauthnCredentialsRequest", "webauthn_credentials",
+    ),
 }
 
 
@@ -175,15 +194,15 @@ ADMIN: dict[str, MethodSpec] = {
         "AdminLogin", "AdminLoginRequest", None,
     ),
     "admin_logout": MethodSpec(
-        ("rest", "grpc"), None, None, "POST", "/v1/admin/logout", None,
+        ALL, q.ADMIN_LOGOUT, "_admin_logout", "POST", "/v1/admin/logout", None,
         "AdminLogout", "AdminLogoutRequest", None,
     ),
     "admin_session": MethodSpec(
-        ("rest", "grpc"), None, None, "GET", "/v1/admin/session", None,
+        ALL, q.ADMIN_SESSION, "_admin_session", "GET", "/v1/admin/session", None,
         "AdminSession", "AdminSessionRequest", None,
     ),
     "admin_meta": MethodSpec(
-        ("rest", "grpc"), None, None, "GET", "/v1/admin/meta", "admin_meta",
+        ALL, q.ADMIN_META, "_admin_meta", "GET", "/v1/admin/meta", "admin_meta",
         "AdminMeta", "AdminMetaRequest", "admin_meta",
     ),
     "users": MethodSpec(
@@ -271,7 +290,7 @@ ADMIN: dict[str, MethodSpec] = {
         "AuditLogs", "AuditLogsRequest", None,
     ),
     "fga_get_model": MethodSpec(
-        ("rest", "grpc"), None, None, "GET", "/v1/admin/fga/model", "model",
+        ALL, q.ADMIN_FGA_GET_MODEL, "_fga_get_model", "GET", "/v1/admin/fga/model", "model",
         "FgaGetModel", "FgaGetModelRequest", "model",
     ),
     "fga_write_model": MethodSpec(
@@ -300,7 +319,7 @@ ADMIN: dict[str, MethodSpec] = {
         "FgaExpand", "FgaExpandRequest", None,
     ),
     "fga_reset": MethodSpec(
-        ("rest", "grpc"), None, None, "POST", "/v1/admin/fga/reset", None,
+        ALL, q.ADMIN_FGA_RESET, "_fga_reset", "POST", "/v1/admin/fga/reset", None,
         "FgaReset", "FgaResetRequest", None,
     ),
     # gql-only extras (no proto / no rest / no grpc).
@@ -411,61 +430,130 @@ ADMIN: dict[str, MethodSpec] = {
     ),
     # user_organizations / org domains: graphql-only on the server (no proto RPC).
     "user_organizations": MethodSpec(
-        GQL_ONLY, q.ADMIN_USER_ORGANIZATIONS, "_user_organizations"
+        ALL, q.ADMIN_USER_ORGANIZATIONS, "_user_organizations",
+        "POST", "/v1/admin/user_organizations", None,
+        "UserOrganizations", "UserOrganizationsRequest", None,
     ),
     "request_org_domain": MethodSpec(
-        GQL_ONLY, q.ADMIN_REQUEST_ORG_DOMAIN, "_request_org_domain"
+        ALL, q.ADMIN_REQUEST_ORG_DOMAIN, "_request_org_domain",
+        "POST", "/v1/admin/request_org_domain", "challenge",
+        "RequestOrgDomain", "RequestOrgDomainRequest", "challenge",
     ),
-    "verify_org_domain": MethodSpec(GQL_ONLY, q.ADMIN_VERIFY_ORG_DOMAIN, "_verify_org_domain"),
+    "verify_org_domain": MethodSpec(
+        ALL, q.ADMIN_VERIFY_ORG_DOMAIN, "_verify_org_domain",
+        "POST", "/v1/admin/verify_org_domain", "org_domain",
+        "VerifyOrgDomain", "VerifyOrgDomainRequest", "org_domain",
+    ),
     "add_verified_org_domain": MethodSpec(
-        GQL_ONLY, q.ADMIN_ADD_VERIFIED_ORG_DOMAIN, "_add_verified_org_domain"
+        ALL, q.ADMIN_ADD_VERIFIED_ORG_DOMAIN, "_add_verified_org_domain",
+        "POST", "/v1/admin/add_verified_org_domain", "org_domain",
+        "AddVerifiedOrgDomain", "AddVerifiedOrgDomainRequest", "org_domain",
     ),
-    "delete_org_domain": MethodSpec(GQL_ONLY, q.ADMIN_DELETE_ORG_DOMAIN, "_delete_org_domain"),
-    "org_domains": MethodSpec(GQL_ONLY, q.ADMIN_ORG_DOMAINS, "_org_domains"),
+    "delete_org_domain": MethodSpec(
+        ALL, q.ADMIN_DELETE_ORG_DOMAIN, "_delete_org_domain",
+        "POST", "/v1/admin/delete_org_domain", None,
+        "DeleteOrgDomain", "DeleteOrgDomainRequest", None,
+    ),
+    "org_domains": MethodSpec(
+        ALL, q.ADMIN_ORG_DOMAINS, "_org_domains", "POST", "/v1/admin/org_domains", None,
+        "OrgDomains", "OrgDomainsRequest", None,
+    ),
     "create_organization": MethodSpec(
-        GQL_ONLY, q.ADMIN_CREATE_ORGANIZATION, "_create_organization"
+        ALL, q.ADMIN_CREATE_ORGANIZATION, "_create_organization",
+        "POST", "/v1/admin/create_organization", "organization",
+        "CreateOrganization", "CreateOrganizationRequest", "organization",
     ),
     "update_organization": MethodSpec(
-        GQL_ONLY, q.ADMIN_UPDATE_ORGANIZATION, "_update_organization"
+        ALL, q.ADMIN_UPDATE_ORGANIZATION, "_update_organization",
+        "POST", "/v1/admin/update_organization", "organization",
+        "UpdateOrganization", "UpdateOrganizationRequest", "organization",
     ),
     "delete_organization": MethodSpec(
-        GQL_ONLY, q.ADMIN_DELETE_ORGANIZATION, "_delete_organization"
+        ALL, q.ADMIN_DELETE_ORGANIZATION, "_delete_organization",
+        "POST", "/v1/admin/delete_organization", None,
+        "DeleteOrganization", "DeleteOrganizationRequest", None,
     ),
-    "add_org_member": MethodSpec(GQL_ONLY, q.ADMIN_ADD_ORG_MEMBER, "_add_org_member"),
-    "remove_org_member": MethodSpec(GQL_ONLY, q.ADMIN_REMOVE_ORG_MEMBER, "_remove_org_member"),
-    "get_organization": MethodSpec(GQL_ONLY, q.ADMIN_GET_ORGANIZATION, "_organization"),
-    "organizations": MethodSpec(GQL_ONLY, q.ADMIN_ORGANIZATIONS, "_organizations"),
-    "org_members": MethodSpec(GQL_ONLY, q.ADMIN_ORG_MEMBERS, "_org_members"),
+    "add_org_member": MethodSpec(
+        ALL, q.ADMIN_ADD_ORG_MEMBER, "_add_org_member",
+        "POST", "/v1/admin/add_org_member", "org_member",
+        "AddOrgMember", "AddOrgMemberRequest", "org_member",
+    ),
+    "remove_org_member": MethodSpec(
+        ALL, q.ADMIN_REMOVE_ORG_MEMBER, "_remove_org_member",
+        "POST", "/v1/admin/remove_org_member", None,
+        "RemoveOrgMember", "RemoveOrgMemberRequest", None,
+    ),
+    "get_organization": MethodSpec(
+        ALL, q.ADMIN_GET_ORGANIZATION, "_organization",
+        "POST", "/v1/admin/organization", "organization",
+        "GetOrganization", "GetOrganizationRequest", "organization",
+    ),
+    "organizations": MethodSpec(
+        ALL, q.ADMIN_ORGANIZATIONS, "_organizations", "POST", "/v1/admin/organizations", None,
+        "Organizations", "OrganizationsRequest", None,
+    ),
+    "org_members": MethodSpec(
+        ALL, q.ADMIN_ORG_MEMBERS, "_org_members", "POST", "/v1/admin/org_members", None,
+        "OrgMembers", "OrgMembersRequest", None,
+    ),
     "create_org_oidc_connection": MethodSpec(
-        GQL_ONLY, q.ADMIN_CREATE_ORG_OIDC_CONNECTION, "_create_org_oidc_connection"
+        ALL, q.ADMIN_CREATE_ORG_OIDC_CONNECTION, "_create_org_oidc_connection",
+        "POST", "/v1/admin/create_org_oidc_connection", "org_oidc_connection",
+        "CreateOrgOidcConnection", "CreateOrgOidcConnectionRequest", "org_oidc_connection",
     ),
     "update_org_oidc_connection": MethodSpec(
-        GQL_ONLY, q.ADMIN_UPDATE_ORG_OIDC_CONNECTION, "_update_org_oidc_connection"
+        ALL, q.ADMIN_UPDATE_ORG_OIDC_CONNECTION, "_update_org_oidc_connection",
+        "POST", "/v1/admin/update_org_oidc_connection", "org_oidc_connection",
+        "UpdateOrgOidcConnection", "UpdateOrgOidcConnectionRequest", "org_oidc_connection",
     ),
     "delete_org_oidc_connection": MethodSpec(
-        GQL_ONLY, q.ADMIN_DELETE_ORG_OIDC_CONNECTION, "_delete_org_oidc_connection"
+        ALL, q.ADMIN_DELETE_ORG_OIDC_CONNECTION, "_delete_org_oidc_connection",
+        "POST", "/v1/admin/delete_org_oidc_connection", None,
+        "DeleteOrgOidcConnection", "DeleteOrgOidcConnectionRequest", None,
     ),
     "get_org_oidc_connection": MethodSpec(
-        GQL_ONLY, q.ADMIN_GET_ORG_OIDC_CONNECTION, "_org_oidc_connection"
+        ALL, q.ADMIN_GET_ORG_OIDC_CONNECTION, "_org_oidc_connection",
+        "POST", "/v1/admin/org_oidc_connection", "org_oidc_connection",
+        "GetOrgOidcConnection", "GetOrgOidcConnectionRequest", "org_oidc_connection",
     ),
     "create_org_saml_connection": MethodSpec(
-        GQL_ONLY, q.ADMIN_CREATE_ORG_SAML_CONNECTION, "_create_org_saml_connection"
+        ALL, q.ADMIN_CREATE_ORG_SAML_CONNECTION, "_create_org_saml_connection",
+        "POST", "/v1/admin/create_org_saml_connection", "org_saml_connection",
+        "CreateOrgSamlConnection", "CreateOrgSamlConnectionRequest", "org_saml_connection",
     ),
     "update_org_saml_connection": MethodSpec(
-        GQL_ONLY, q.ADMIN_UPDATE_ORG_SAML_CONNECTION, "_update_org_saml_connection"
+        ALL, q.ADMIN_UPDATE_ORG_SAML_CONNECTION, "_update_org_saml_connection",
+        "POST", "/v1/admin/update_org_saml_connection", "org_saml_connection",
+        "UpdateOrgSamlConnection", "UpdateOrgSamlConnectionRequest", "org_saml_connection",
     ),
     "delete_org_saml_connection": MethodSpec(
-        GQL_ONLY, q.ADMIN_DELETE_ORG_SAML_CONNECTION, "_delete_org_saml_connection"
+        ALL, q.ADMIN_DELETE_ORG_SAML_CONNECTION, "_delete_org_saml_connection",
+        "POST", "/v1/admin/delete_org_saml_connection", None,
+        "DeleteOrgSamlConnection", "DeleteOrgSamlConnectionRequest", None,
     ),
     "get_org_saml_connection": MethodSpec(
-        GQL_ONLY, q.ADMIN_GET_ORG_SAML_CONNECTION, "_org_saml_connection"
+        ALL, q.ADMIN_GET_ORG_SAML_CONNECTION, "_org_saml_connection",
+        "POST", "/v1/admin/org_saml_connection", "org_saml_connection",
+        "GetOrgSamlConnection", "GetOrgSamlConnectionRequest", "org_saml_connection",
     ),
     "create_scim_endpoint": MethodSpec(
-        GQL_ONLY, q.ADMIN_CREATE_SCIM_ENDPOINT, "_create_scim_endpoint"
+        ALL, q.ADMIN_CREATE_SCIM_ENDPOINT, "_create_scim_endpoint",
+        "POST", "/v1/admin/create_scim_endpoint", None,
+        "CreateScimEndpoint", "CreateScimEndpointRequest", None,
     ),
-    "rotate_scim_token": MethodSpec(GQL_ONLY, q.ADMIN_ROTATE_SCIM_TOKEN, "_rotate_scim_token"),
+    "rotate_scim_token": MethodSpec(
+        ALL, q.ADMIN_ROTATE_SCIM_TOKEN, "_rotate_scim_token",
+        "POST", "/v1/admin/rotate_scim_token", None,
+        "RotateScimToken", "RotateScimTokenRequest", None,
+    ),
     "delete_scim_endpoint": MethodSpec(
-        GQL_ONLY, q.ADMIN_DELETE_SCIM_ENDPOINT, "_delete_scim_endpoint"
+        ALL, q.ADMIN_DELETE_SCIM_ENDPOINT, "_delete_scim_endpoint",
+        "POST", "/v1/admin/delete_scim_endpoint", None,
+        "DeleteScimEndpoint", "DeleteScimEndpointRequest", None,
     ),
-    "get_scim_endpoint": MethodSpec(GQL_ONLY, q.ADMIN_GET_SCIM_ENDPOINT, "_scim_endpoint"),
+    "get_scim_endpoint": MethodSpec(
+        ALL, q.ADMIN_GET_SCIM_ENDPOINT, "_scim_endpoint",
+        "POST", "/v1/admin/scim_endpoint", "scim_endpoint",
+        "GetScimEndpoint", "GetScimEndpointRequest", "scim_endpoint",
+    ),
 }

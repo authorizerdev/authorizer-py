@@ -113,15 +113,24 @@ def test_protocol_availability_matches_spec() -> None:
     # gql-only extras
     for name in ("admin_signup", "update_env", "generate_jwt_keys"):
         assert d.ADMIN[name].protocols == ("graphql",)
-    # rest+grpc only (no graphql op)
+    # These have a graphql op too, so they span all three.
     for name in ("admin_logout", "admin_session", "admin_meta", "fga_get_model", "fga_reset"):
-        assert d.ADMIN[name].protocols == ("rest", "grpc")
+        assert d.ADMIN[name].protocols == ("graphql", "rest", "grpc")
     # full coverage
     assert d.ADMIN["users"].protocols == ("graphql", "rest", "grpc")
     # machine-agent-identity ops (clients/trusted issuers/SAML IdP) have proto
     # RPCs -- full coverage now that the stubs are re-vendored.
     for name in ("create_client", "trusted_issuers", "create_saml_service_provider"):
         assert d.ADMIN[name].protocols == ("graphql", "rest", "grpc")
-    # orgs/SSO/SCIM/user_organizations/org_domains are graphql-only on the server.
-    for name in ("create_organization", "get_scim_endpoint", "user_organizations", "org_domains"):
-        assert d.ADMIN[name].protocols == ("graphql",)
+    # orgs/SSO/SCIM/user_organizations/org_domains gained proto RPCs and REST
+    # bindings in server 2.4.0 (PR #739) -- full coverage.
+    for name in (
+        "create_organization",
+        "get_scim_endpoint",
+        "user_organizations",
+        "org_domains",
+        "get_org_oidc_connection",
+        "get_org_saml_connection",
+        "request_org_domain",
+    ):
+        assert d.ADMIN[name].protocols == ("graphql", "rest", "grpc")

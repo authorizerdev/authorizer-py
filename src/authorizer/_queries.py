@@ -266,6 +266,15 @@ ADMIN_AUDIT_LOGS = (
     f"{{ _audit_logs(params: $data) {{ {PAGINATION_FRAGMENT} "
     f"audit_logs {{ {AUDIT_LOG_FRAGMENT} }} }} }}"
 )
+ADMIN_LOGOUT = "mutation adminLogout { _admin_logout { message } }"
+ADMIN_SESSION = "query adminSession { _admin_session { message } }"
+ADMIN_META = (
+    "query adminMeta { _admin_meta { roles default_roles protected_roles "
+    "is_multi_factor_auth_service_enabled } }"
+)
+ADMIN_FGA_GET_MODEL = "query adminFgaGetModel { _fga_get_model { id dsl } }"
+ADMIN_FGA_RESET = "mutation adminFgaReset { _fga_reset { message } }"
+
 ADMIN_UPDATE_ENV = (
     "mutation adminUpdateEnv($data: UpdateEnvRequest!) "
     "{ _update_env(params: $data) { message } }"
