@@ -119,6 +119,37 @@ def admin(protocol: str) -> AuthorizerAdminClient:
     c.close()
 
 
+def _complete_mfa(client: AuthorizerClient, auth: t.AuthToken, email: str) -> t.AuthToken:
+    """Redeem the access token withheld by the MFA offer.
+
+    Since server 2.4.0 MFA is on by default: signup/login answer "Proceed to mfa
+    setup" with no access token and open an MFA session identified by a cookie.
+    ``skip_mfa_setup`` on the SAME client (so the cookie is replayed) hands the
+    token over. Older servers return the token directly, hence the guard.
+    """
+    if auth.access_token:
+        return auth
+    return client.skip_mfa_setup(t.SkipMfaSetupRequest(email=email))
+
+
+async def _acomplete_mfa(
+    client: AsyncAuthorizerClient, auth: t.AuthToken, email: str
+) -> t.AuthToken:
+    """Async mirror of :func:`_complete_mfa`."""
+    if auth.access_token:
+        return auth
+    return await client.skip_mfa_setup(t.SkipMfaSetupRequest(email=email))
+
+
+def _signup_authed(client: AuthorizerClient, prefix: str) -> tuple[str, t.AuthToken]:
+    """Sign a fresh user up over *client*'s protocol and clear the MFA offer."""
+    email = f"{_unique(prefix)}@example.com"
+    auth = client.signup(
+        t.SignUpRequest(email=email, password=PASSWORD, confirm_password=PASSWORD)
+    )
+    return email, _complete_mfa(client, auth, email)
+
+
 def _signup(client: AuthorizerClient) -> tuple[t.AuthToken, dict[str, str], str]:
     """Signup a fresh user over graphql and return (auth, bearer_header, session_cookie).
 
@@ -128,13 +159,7 @@ def _signup(client: AuthorizerClient) -> tuple[t.AuthToken, dict[str, str], str]
     """
     gql = AuthorizerClient(CLIENT_ID, URL, protocol="graphql")
     try:
-        auth = gql.signup(
-            t.SignUpRequest(
-                email=f"{_unique('py-live')}@example.com",
-                password=PASSWORD,
-                confirm_password=PASSWORD,
-            )
-        )
+        _, auth = _signup_authed(gql, "py-live")
         cookie = gql._http.cookies.get("cookie_session") or ""
     finally:
         gql.close()
@@ -152,10 +177,7 @@ def test_meta(client: AuthorizerClient) -> None:
 
 
 def test_signup_and_profile(client: AuthorizerClient) -> None:
-    email = f"{_unique('py-live')}@example.com"
-    auth = client.signup(
-        t.SignUpRequest(email=email, password=PASSWORD, confirm_password=PASSWORD)
-    )
+    email, auth = _signup_authed(client, "py-live")
     assert auth.access_token
     assert auth.user is not None and auth.user.email == email
     headers = {"Authorization": f"Bearer {auth.access_token}"}
@@ -211,9 +233,10 @@ def test_check_and_list_permissions(client: AuthorizerClient, fga_seed: None) ->
 # --------------------------------------------------------------------------- #
 def test_login(client: AuthorizerClient) -> None:
     # Sign up a fresh user (over the same protocol), then log in with it.
-    email = f"{_unique('py-login')}@example.com"
-    client.signup(t.SignUpRequest(email=email, password=PASSWORD, confirm_password=PASSWORD))
-    auth = client.login(t.LoginRequest(email=email, password=PASSWORD))
+    email, _ = _signup_authed(client, "py-login")
+    auth = _complete_mfa(
+        client, client.login(t.LoginRequest(email=email, password=PASSWORD)), email
+    )
     assert auth.access_token
     assert auth.user is not None and auth.user.email == email
 
@@ -221,10 +244,7 @@ def test_login(client: AuthorizerClient) -> None:
 def test_update_profile(client: AuthorizerClient) -> None:
     # update_profile is authenticated: over grpc the bearer is sent as metadata
     # (#636 interceptor); over http it is the Authorization header.
-    email = f"{_unique('py-upd')}@example.com"
-    auth = client.signup(
-        t.SignUpRequest(email=email, password=PASSWORD, confirm_password=PASSWORD)
-    )
+    _, auth = _signup_authed(client, "py-upd")
     headers = {"Authorization": f"Bearer {auth.access_token}"}
     res = client.update_profile(t.UpdateProfileRequest(given_name="Updated"), headers=headers)
     assert res is not None  # GenericResponse over all protocols
@@ -265,6 +285,7 @@ async def test_async_signup_and_profile(protocol: str) -> None:
         auth = await c.signup(
             t.SignUpRequest(email=email, password=PASSWORD, confirm_password=PASSWORD)
         )
+        auth = await _acomplete_mfa(c, auth, email)
         assert auth.user is not None and auth.user.email == email
         prof = await c.get_profile(
             headers={"Authorization": f"Bearer {auth.access_token}"}
@@ -281,7 +302,10 @@ async def test_async_login_and_update_profile(protocol: str) -> None:
         auth = await c.signup(
             t.SignUpRequest(email=email, password=PASSWORD, confirm_password=PASSWORD)
         )
-        logged_in = await c.login(t.LoginRequest(email=email, password=PASSWORD))
+        auth = await _acomplete_mfa(c, auth, email)
+        logged_in = await _acomplete_mfa(
+            c, await c.login(t.LoginRequest(email=email, password=PASSWORD)), email
+        )
         assert logged_in.access_token
         headers = {"Authorization": f"Bearer {auth.access_token}"}
         res = await c.update_profile(
@@ -527,10 +551,7 @@ def test_admin_org_member_lifecycle(
     admin: AuthorizerAdminClient, client: AuthorizerClient, protocol: str
 ) -> None:
     org = admin.create_organization(t.CreateOrganizationRequest(name=_unique("org-mem")))
-    email = f"{_unique('member')}@example.com"
-    signup = client.signup(
-        t.SignUpRequest(email=email, password=PASSWORD, confirm_password=PASSWORD)
-    )
+    email, signup = _signup_authed(client, "member")
     user_id = signup.user.id
     try:
         member = admin.add_org_member(
@@ -676,10 +697,7 @@ def test_webauthn_options_and_credentials(
     Only the option-issuing and listing halves are exercised: completing a
     ceremony needs a real authenticator to sign the challenge.
     """
-    email = f"{_unique('passkey')}@example.com"
-    signup = client.signup(
-        t.SignUpRequest(email=email, password=PASSWORD, confirm_password=PASSWORD)
-    )
+    email, signup = _signup_authed(client, "passkey")
     bearer = {"Authorization": f"Bearer {signup.access_token}"}
     try:
         opts = client.webauthn_registration_options(headers=bearer)

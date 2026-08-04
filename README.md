@@ -86,6 +86,15 @@ with AuthorizerClient(
     print("access_token:", token.access_token)
 ```
 
+> **Note (Authorizer >= v2.4.0):** MFA is on by default, so `login`/`signup` withhold the access token and answer `"Proceed to mfa setup"` with `should_show_totp_screen=True`. Either walk the user through setup (`totp_mfa_setup`, `email_otp_mfa_setup`, …) or skip it. The MFA session is identified by a cookie, so **`skip_mfa_setup` must be called on the same client instance** that did the login/signup:
+>
+> ```python
+> token = client.login(LoginRequest(email="user@example.com", password="Abc@123"))
+> if not token.access_token:  # MFA offer — same client keeps the MFA session cookie
+>     token = client.skip_mfa_setup(SkipMfaSetupRequest(email="user@example.com"))
+> print("access_token:", token.access_token)
+> ```
+
 > **Note (Authorizer >= v2.3.0):** the server's CSRF guard requires an `Origin` header on state-changing requests. The client sends the Authorizer server's own origin by default, which always passes. If your instance restricts `ALLOWED_ORIGINS`, pass your app's origin instead via `extra_headers`: `{"Origin": "https://your-app.com"}`.
 
 ## gRPC transport

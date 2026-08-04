@@ -17,6 +17,7 @@ from ._core import (
     build_headers,
     build_oauth_request,
     build_token_body,
+    new_cookie_jar,
     parse_graphql_data,
     parse_graphql_response,
     parse_oauth_response,
@@ -56,8 +57,10 @@ class AuthorizerClient:
             protocol=protocol,
             grpc_endpoint=grpc_endpoint.strip(),
         )
-        self._http = httpx.Client()
+        self._http = httpx.Client(cookies=new_cookie_jar())
         self._channel: Any = None
+        # gRPC has no cookie jar; see _grpc_transport.store_cookies.
+        self._grpc_cookies: dict[str, str] = {}
 
     # -- lifecycle -------------------------------------------------------- #
     def close(self) -> None:
@@ -125,7 +128,7 @@ class AuthorizerClient:
                     self._config.authorizer_url, self._config.grpc_endpoint
                 )
             md = g.grpc_metadata(self._config, headers)
-            return g.grpc_call(self._channel, spec, data, md, self._ADMIN)
+            return g.grpc_call(self._channel, spec, data, md, self._ADMIN, self._grpc_cookies)
         req, kind, unwrap = prepare_http(self._config, spec, data, headers)
         res = self._send(req)
         if kind == "rest":

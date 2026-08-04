@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import http.cookiejar as _cookiejar
 import json as _json
 from dataclasses import dataclass, field
 from typing import Any
@@ -28,6 +29,42 @@ class ClientConfig:
     # separate port (default 9091), not the HTTP URL's port. When unset, the
     # gRPC target is derived from ``authorizer_url``'s host with port 9091.
     grpc_endpoint: str = ""
+
+
+class _LoopbackCookieJar(_cookiejar.CookieJar):
+    """Cookie jar that keeps loopback cookies usable, the way browsers do.
+
+    Server >= 2.4.0 has MFA on by default: signup/login withhold the access token
+    and start an MFA session identified ONLY by the ``mfa_session`` cookie, so
+    :meth:`~authorizer.client.AuthorizerClient.skip_mfa_setup` and the
+    ``*_mfa_setup`` calls depend on that cookie going back out. Two
+    :mod:`http.cookiejar` rules silently drop it against a local server:
+
+    * ``Secure`` cookies are never sent to an ``http://`` URL, but the server sets
+      ``Secure`` by default (``--app-cookie-secure``) even when served over http;
+    * ``eff_request_host`` derives ``localhost.local`` for a dotless host, which
+      never domain-matches the ``Domain=localhost`` cookie the server sets.
+
+    Browsers (and hence the login UI) send the cookie in both cases: W3C secure
+    contexts treat loopback as a trustworthy origin. The fix normalises the stored
+    cookie rather than installing a :class:`~http.cookiejar.CookiePolicy` because
+    httpx rebuilds the outgoing jar with the default policy on every request
+    (``BaseClient._merge_cookies``), which discards any custom policy. Non-loopback
+    cookies are untouched.
+    """
+
+    def set_cookie(self, cookie: Any) -> None:
+        host = (cookie.domain or "").lstrip(".").lower()
+        if host in ("localhost", "127.0.0.1", "::1") or host.endswith(".localhost"):
+            cookie.secure = False
+            if "." not in host:
+                cookie.domain = f".{host}.local"
+        super().set_cookie(cookie)
+
+
+def new_cookie_jar() -> _cookiejar.CookieJar:
+    """Cookie jar for the SDK's httpx client (see :class:`_LoopbackCookieJar`)."""
+    return _LoopbackCookieJar()
 
 
 @dataclass
