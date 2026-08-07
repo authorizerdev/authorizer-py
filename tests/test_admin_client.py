@@ -81,7 +81,7 @@ def test_delete_user_destructive_message() -> None:
         return_value=Response(200, json={"data": {"_delete_user": {"message": "deleted"}}})
     )
     with _admin() as c:
-        assert c.delete_user(t.DeleteUserRequest(email="a@b.com")).message == "deleted"
+        assert c.delete_user(t.DeleteUserRequest(id="usr_123")).message == "deleted"
 
 
 @respx.mock

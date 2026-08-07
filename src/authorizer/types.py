@@ -660,7 +660,10 @@ class UpdateUserRequest(_Request):
 
 @dataclass
 class DeleteUserRequest(_Request):
-    email: str
+    # BREAKING (server 2.4.0): this took `email` and now takes `id`. Email is
+    # not an identifier every account has — a phone-only signup has none — so
+    # an email-keyed delete could not reach those accounts at all.
+    id: str
 
 
 @dataclass

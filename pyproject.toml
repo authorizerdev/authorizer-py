@@ -28,10 +28,15 @@ classifiers = [
 # grpc-gateway responses with protojson (int64-as-string + single-field wrappers)
 # using those message types. grpcio is only needed for the optional ``grpc``
 # protocol (pulled via authorizer-proto[grpc]).
-dependencies = ["httpx>=0.24,<1", "protobuf>=4", "authorizer-proto>=0.2.0rc0"]
+#
+# authorizer-proto is pinned at >=0.2.0rc1: rc1 replaced DeleteUserRequest.email
+# with .id, and this SDK's delete_user builds the id form. An older SDK paired
+# with rc1 (or this SDK with rc0) breaks at that call, so the floor moves with
+# the break rather than floating across it.
+dependencies = ["httpx>=0.24,<1", "protobuf>=4", "authorizer-proto>=0.2.0rc1"]
 
 [project.optional-dependencies]
-grpc = ["authorizer-proto[grpc]>=0.2.0rc0", "grpcio>=1.60", "protobuf>=4"]
+grpc = ["authorizer-proto[grpc]>=0.2.0rc1", "grpcio>=1.60", "protobuf>=4"]
 dev = [
     "pytest>=7",
     "pytest-asyncio>=0.23",

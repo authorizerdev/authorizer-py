@@ -550,7 +550,7 @@ def test_admin_org_member_lifecycle(
         ).message
     finally:
         admin.delete_organization(t.OrganizationRequest(id=org.id))
-        admin.delete_user(t.DeleteUserRequest(email=email))
+        admin.delete_user(t.DeleteUserRequest(id=user_id))
 
 
 def test_admin_org_domain_lifecycle(admin: AuthorizerAdminClient, protocol: str) -> None:
@@ -691,4 +691,4 @@ def test_webauthn_options_and_credentials(
         assert isinstance(creds, list)
         assert creds == []  # nothing registered yet
     finally:
-        admin.delete_user(t.DeleteUserRequest(email=email))
+        admin.delete_user(t.DeleteUserRequest(id=signup.user.id))
