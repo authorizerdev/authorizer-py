@@ -46,6 +46,7 @@ jobs:
             -p 8080:8080 -p 9091:9091 \
             quay.io/authorizer/authorizer:2.4.0-rc.16 \
             --database-type=sqlite --database-url=test.db \
+            --url=http://localhost:8080 \
             --jwt-type=HS256 --jwt-secret=test \
             --admin-secret=admin --client-id=ci-client --client-secret=secret \
             --grpc-insecure=true --disable-mfa
