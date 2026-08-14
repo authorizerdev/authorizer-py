@@ -4,7 +4,8 @@ Gated behind ``@pytest.mark.live`` so it never runs in the default unit suite.
 Run against ``lakhansamani/authorizer:2.3.0`` (see SDK_ADMIN_SPEC.md):
 
     docker run -p 8090:8080 -p 9091:9091 lakhansamani/authorizer:2.3.0 \\
-        --database-type=sqlite --database-url=test.db --jwt-type=HS256 \\
+        --database-type=sqlite --database-url=test.db --url=http://localhost:8090 \\
+        --jwt-type=HS256 \\
         --jwt-secret=test --admin-secret=admin --client-id=test-client \\
         --client-secret=secret
 
