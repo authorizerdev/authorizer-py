@@ -317,6 +317,7 @@ CLIENT_FRAGMENT = "id client_id name description allowed_scopes is_active create
 TRUSTED_ISSUER_FRAGMENT = (
     "id service_account_id name issuer_url key_source_type jwks_url expected_aud "
     "subject_claim allowed_subjects issuer_type is_active spiffe_refresh_hint_seconds "
+    "enable_token_review kubernetes_api_server_url "
     "created_at updated_at"
 )
 ORGANIZATION_FRAGMENT = "id name display_name enabled created_at updated_at"

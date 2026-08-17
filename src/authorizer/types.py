@@ -824,7 +824,9 @@ class AddTrustedIssuerRequest(_Request):
     service_account_id: str
     name: str
     issuer_url: str
-    # key_source_type: "oidc_discovery" | "static_jwks_url" | "spiffe_bundle_endpoint"
+    # key_source_type: "oidc_discovery" | "static_jwks_url".
+    # "spiffe_bundle_endpoint" is declared server-side but has no fetcher and is
+    # REJECTED at write time — use static_jwks_url for SPIFFE issuers.
     key_source_type: str
     expected_aud: str
     # issuer_type: "kubernetes_sa" | "spiffe_jwt" | "oidc" | "cloud_oidc"
@@ -835,6 +837,18 @@ class AddTrustedIssuerRequest(_Request):
     # allowed_subjects: comma-separated exact subject allow-list. Empty = deny-all.
     allowed_subjects: str | None = None
     spiffe_refresh_hint_seconds: int | None = None
+    # enable_token_review turns on online Kubernetes TokenReview validation:
+    # after the offline JWKS checks pass, the server asks the cluster whether the
+    # presented token is still authenticated, which offline validation cannot
+    # tell (a deleted pod's unexpired token still verifies).
+    enable_token_review: bool | None = None
+    # kubernetes_api_server_url is REQUIRED, and must be https, whenever
+    # enable_token_review is true — the server rejects the write otherwise.
+    #
+    # Security-sensitive: the server authenticates that call with its own
+    # in-cluster ServiceAccount token, so whatever host is set here receives
+    # that credential. It must be the cluster's real API server.
+    kubernetes_api_server_url: str | None = None
 
 
 @dataclass
@@ -846,6 +860,11 @@ class UpdateTrustedIssuerRequest(_Request):
     allowed_subjects: str | None = None
     is_active: bool | None = None
     spiffe_refresh_hint_seconds: int | None = None
+    # See AddTrustedIssuerRequest for both fields. On update the server
+    # validates the MERGED row, so enabling review without a previously stored
+    # apiserver URL is rejected at write time.
+    enable_token_review: bool | None = None
+    kubernetes_api_server_url: str | None = None
 
 
 @dataclass
@@ -1455,6 +1474,8 @@ class TrustedIssuer:
     issuer_type: str = ""
     is_active: bool = False
     spiffe_refresh_hint_seconds: int | None = None
+    enable_token_review: bool = False
+    kubernetes_api_server_url: str | None = None
     created_at: int | None = None
     updated_at: int | None = None
 
