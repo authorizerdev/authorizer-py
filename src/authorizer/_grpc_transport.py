@@ -6,11 +6,10 @@ lazily so the SDK works without them when protocol != "grpc".
 
 from __future__ import annotations
 
-from http.cookies import SimpleCookie
 from typing import Any
 from urllib.parse import urlparse
 
-from ._core import ClientConfig
+from ._core import ClientConfig, absorb_set_cookie
 from ._proto import build_message, message_to_dict, unwrap_field
 from .exceptions import AuthorizerError
 
@@ -84,23 +83,16 @@ def apply_cookies(
 
 
 def store_cookies(initial_metadata: Any, cookies: dict[str, str]) -> None:
-    """Record ``set-cookie`` response metadata into *cookies* (in place)."""
-    for key, value in initial_metadata or ():
-        if key.lower() != "set-cookie":
-            continue
-        parsed: Any = SimpleCookie()
-        parsed.load(value)
-        for name, morsel in parsed.items():
-            try:
-                # A zero/negative Max-Age is the server deleting the cookie
-                # (logout, DeleteMfaSession) — drop it rather than replay it.
-                expired = int(morsel["max-age"]) <= 0
-            except (TypeError, ValueError):
-                expired = False
-            if expired:
-                cookies.pop(name, None)
-            else:
-                cookies[name] = morsel.value
+    """Record ``set-cookie`` response metadata into *cookies* (in place).
+
+    Delegates to the shared parser so gRPC and HTTP cannot drift on deletion
+    handling or attribute parsing. gRPC carries no scheme, and the channel is
+    already TLS-or-not by construction, so Secure is not re-litigated here.
+    """
+    absorb_set_cookie(
+        (value for key, value in (initial_metadata or ()) if key.lower() == "set-cookie"),
+        cookies,
+    )
 
 
 def make_channel(authorizer_url: str, grpc_endpoint: str = "") -> Any:

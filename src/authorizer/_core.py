@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import http.cookiejar as _cookiejar
 import json as _json
+from collections.abc import Iterable
 from dataclasses import dataclass, field
+from http.cookies import SimpleCookie
 from typing import Any
 from urllib.parse import urlparse
 from urllib.parse import urlsplit as _urlsplit
@@ -32,90 +33,72 @@ class ClientConfig:
     grpc_endpoint: str = ""
 
 
-class _LoopbackCookieJar(_cookiejar.CookieJar):
-    """Cookie jar that keeps loopback cookies usable, the way browsers do.
+# --------------------------------------------------------------------------- #
+# Cookie carriage
+#
+# The server identifies an in-progress MFA session (and an admin_login session)
+# ONLY by a cookie, so a client that drops cookies between calls can never
+# redeem the withheld access token. gRPC already solved this with a plain
+# name->value dict replayed as one `cookie` metadata entry; this is the same
+# store for the HTTP transports, so both paths behave identically.
+#
+# It is deliberately NOT an http.cookiejar. A jar implements a user agent —
+# domain matching, public-suffix rules, policy layering — and an SDK talks to
+# exactly ONE origin, chosen by the caller at construction. Every one of those
+# rules is either inapplicable or a source of the version-specific breakage the
+# jar-based approach hit (`Secure` on http://localhost, dotless-domain matching,
+# set_ok-vs-set_cookie layering). Origin scoping here is structural: the store is
+# per-client and only ever replayed to that client's own base URL.
+# --------------------------------------------------------------------------- #
 
-    Server >= 2.4.0 has MFA on by default: signup/login withhold the access token
-    and start an MFA session identified ONLY by the ``mfa_session`` cookie, so
-    :meth:`~authorizer.client.AuthorizerClient.skip_mfa_setup` and the
-    ``*_mfa_setup`` calls depend on that cookie going back out. Two
-    :mod:`http.cookiejar` rules silently drop it against a local server:
-
-    * ``Secure`` cookies are never sent to an ``http://`` URL, but the server sets
-      ``Secure`` by default (``--app-cookie-secure``) even when served over http;
-    * ``eff_request_host`` derives ``localhost.local`` for a dotless host, which
-      never domain-matches the ``Domain=localhost`` cookie the server sets.
-
-    Browsers (and hence the login UI) send the cookie in both cases: W3C secure
-    contexts treat loopback as a trustworthy origin. The fix normalises the stored
-    cookie rather than installing a :class:`~http.cookiejar.CookiePolicy` because
-    httpx rebuilds the outgoing jar with the default policy on every request
-    (``BaseClient._merge_cookies``), which discards any custom policy. Non-loopback
-    cookies are untouched.
-    """
-
-    def set_cookie(self, cookie: Any) -> None:
-        host = (cookie.domain or "").lstrip(".").lower()
-        if _is_loopback_host(host):
-            cookie.secure = False
-            if "." not in host:
-                cookie.domain = f".{host}.local"
-        super().set_cookie(cookie)
+CookieStore = dict[str, str]
 
 
-def _request_host(request: Any) -> str:
-    """Host of an outgoing request, without the port.
-
-    http.cookiejar.request_host does exactly this, but it is absent from
-    typeshed's public stubs, so calling it fails `mypy src`. urlsplit is the
-    documented equivalent and behaves identically for the URLs httpx builds.
-    """
-    return (_urlsplit(request.get_full_url()).hostname or "").lower()
-
-
-def _is_loopback_host(host: str) -> bool:
+def is_loopback_host(host: str) -> bool:
+    """True for hosts a browser treats as a trustworthy origin over plain http."""
     host = (host or "").lstrip(".").lower()
     return host in ("localhost", "127.0.0.1", "::1") or host.endswith(".localhost")
 
 
-class _LoopbackCookiePolicy(_cookiejar.DefaultCookiePolicy):
-    """Accept a loopback ``Set-Cookie`` that the default policy discards.
+def absorb_set_cookie(
+    values: Iterable[str], store: CookieStore, *, origin_is_secure: bool = True
+) -> None:
+    """Record `Set-Cookie` values into *store* (in place).
 
-    Normalising in :meth:`_LoopbackCookieJar.set_cookie` is not enough on its
-    own, and the reason is a layering detail worth stating: intake goes through
-    ``extract_cookies``, which asks the POLICY (``set_ok``) whether to keep the
-    cookie and only calls ``set_cookie`` if it says yes. On Python 3.9 and 3.10
-    the default policy rejects ``Domain=localhost`` for an ``http://localhost``
-    request, so the jar's ``set_cookie`` override never ran and the MFA session
-    was dropped before it could be normalised — the fix silently did nothing on
-    exactly the two oldest supported interpreters, which is why the regression
-    test for it failed there and passed on 3.11+.
-
-    Only the DOMAIN check is relaxed, and only for loopback. Every other rule —
-    path, port, version, third-party blocking — still runs, and a non-loopback
-    cookie takes the unmodified default path.
+    ``origin_is_secure`` is https-or-loopback for the client's single origin. A
+    ``Secure`` cookie is not recorded for an insecure origin, mirroring
+    RFC 6265 §4.1.2.5 and what browsers, and Go's stdlib jar, do — loopback
+    included, since the Secure Contexts spec makes it trustworthy.
     """
+    for value in values:
+        parsed: Any = SimpleCookie()
+        parsed.load(value)
+        for name, morsel in parsed.items():
+            if morsel["secure"] and not origin_is_secure:
+                continue
+            try:
+                # A zero/negative Max-Age is the server DELETING the cookie
+                # (logout, DeleteMfaSession) — drop it rather than replay it.
+                expired = int(morsel["max-age"]) <= 0
+            except (TypeError, ValueError):
+                expired = False
+            if expired:
+                store.pop(name, None)
+            else:
+                store[name] = morsel.value
 
-    def set_ok(self, cookie: Any, request: Any) -> bool:
-        # Gate on the REQUEST host, never on the cookie's own Domain. Trusting
-        # the cookie alone lets ANY origin store a localhost-scoped cookie —
-        # https://evil.example.com replying `Set-Cookie: mfa_session=…;
-        # Domain=localhost` would be accepted and then sent to the local
-        # Authorizer, which is session fixation into the MFA session. Verified
-        # by test_remote_host_cannot_plant_a_loopback_cookie.
-        req_host = _request_host(request)
-        if _is_loopback_host(req_host) and _is_loopback_host(
-            getattr(cookie, "domain", "") or req_host
-        ):
-            return self.set_ok_verifiability(cookie, request) and self.set_ok_path(
-                cookie, request
-            )
-        return bool(super().set_ok(cookie, request))
+
+def cookie_header(store: CookieStore) -> str | None:
+    """The `Cookie` request header for *store*, or None when empty."""
+    if not store:
+        return None
+    return "; ".join(f"{k}={v}" for k, v in store.items())
 
 
-def new_cookie_jar() -> _cookiejar.CookieJar:
-    """Cookie jar for the SDK's httpx client (see :class:`_LoopbackCookieJar`)."""
-    return _LoopbackCookieJar(policy=_LoopbackCookiePolicy())
+def origin_is_secure(url: str) -> bool:
+    """Whether this client's single origin may carry a `Secure` cookie."""
+    parts = _urlsplit(url)
+    return parts.scheme == "https" or is_loopback_host(parts.hostname or "")
 
 
 @dataclass
