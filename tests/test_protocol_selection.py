@@ -100,7 +100,7 @@ def test_grpc_dispatch_routes_to_transport(monkeypatch: pytest.MonkeyPatch) -> N
     channel = FakeChannel()
     monkeypatch.setattr(g, "make_channel", lambda url, endpoint="": channel)
 
-    def fake_call(ch, spec, data, metadata, admin):  # type: ignore[no-untyped-def]
+    def fake_call(ch, spec, data, metadata, admin, cookies):  # type: ignore[no-untyped-def]
         captured.update(channel=ch, method=spec.grpc_method, data=data, admin=admin)
         return {"access_token": "tok"}
 
