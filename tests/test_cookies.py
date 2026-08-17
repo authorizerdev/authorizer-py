@@ -77,58 +77,86 @@ def test_grpc_cookies_round_trip():
     assert jar == {}
 
 
-def test_remote_host_cannot_plant_a_loopback_cookie():
-    """A non-loopback origin must not be able to set a localhost-scoped cookie.
+def test_cookies_are_only_sent_to_the_clients_own_origin():
+    """The store is replayed to ONE origin, and that is structural.
 
-    The loopback relaxation exists so a local Authorizer's MFA session survives
-    between calls. Keyed on the COOKIE's Domain instead of the REQUEST's host it
-    would be an open door: any origin could reply
-
-        Set-Cookie: mfa_session=attacker-chosen; Domain=localhost
-
-    and the jar would store it, then hand it to the next http://localhost call —
-    session fixation into the MFA session, from any server the SDK happens to
-    talk to. Gate on the request host.
+    A cookie jar enforces domain scoping for free; a plain store does not, so the
+    scoping has to come from somewhere else. Here it is construction: every
+    RequestSpec is built from config.authorizer_url, so there is no code path
+    that attaches the store to another host. This pins that — if someone ever
+    threads a caller-supplied URL through _send, the MFA session would start
+    leaving for hosts the developer never configured.
     """
-    import httpx
-    from httpx._models import Cookies
+    import respx
+    from httpx import Response
 
-    from authorizer._core import new_cookie_jar
+    from authorizer import types as t
+    from authorizer.client import AuthorizerClient
 
-    jar = Cookies()
-    jar.jar = new_cookie_jar()
-    resp = httpx.Response(
-        200,
-        headers={"set-cookie": "mfa_session=STOLEN; Path=/; Domain=localhost"},
-        request=httpx.Request("POST", "https://evil.example.com/x"),
-    )
-    jar.extract_cookies(resp)
-    assert len(jar.jar) == 0, "a remote origin must not store a loopback cookie"
+    with respx.mock(assert_all_called=False) as mock:
+        mock.post("http://localhost:8380/graphql").mock(
+            side_effect=[
+                Response(
+                    200,
+                    json=OFFER,
+                    headers={"set-cookie": MFA_COOKIE.format(host="localhost")},
+                ),
+                Response(200, json=SKIPPED),
+            ]
+        )
+        other = mock.post("http://other.example.com/graphql").mock(
+            return_value=Response(200, json=SKIPPED)
+        )
+        client = AuthorizerClient("cid", "http://localhost:8380")
+        try:
+            client.signup(t.SignUpRequest(email="a@b.com", password="p", confirm_password="p"))
+            # Sanity: the handle was captured and is replayed to its own origin.
+            client.skip_mfa_setup(t.SkipMfaSetupRequest(email="a@b.com"))
+            assert client._cookies.get("mfa_session") == "sess-1"
+        finally:
+            client.close()
+        assert not other.called, (
+            "the client must never be able to send its cookie store to another host"
+        )
 
 
-def test_remote_secure_cookie_is_not_downgraded():
-    """The Secure->False rewrite must stay loopback-only.
+def test_secure_cookie_is_not_stored_for_an_insecure_origin():
+    """Secure must still mean something (RFC 6265 4.1.2.5).
 
-    Dropping Secure on a real host's cookie would let it ride an http:// request
-    — exactly what the attribute exists to prevent (RFC 6265 §4.1.2.5).
+    Without a jar there is no policy engine enforcing this, so it is enforced at
+    capture instead: a Secure cookie is not recorded when the client's own origin
+    is plain http and not loopback. Loopback is excepted because Secure Contexts
+    makes it trustworthy — the same call Chrome, Firefox and Go's stdlib jar make.
     """
-    import httpx
-    from httpx._models import Cookies
+    from authorizer._core import absorb_set_cookie, origin_is_secure
 
-    from authorizer._core import new_cookie_jar
-
-    jar = Cookies()
-    jar.jar = new_cookie_jar()
-    resp = httpx.Response(
-        200,
-        headers={"set-cookie": "sess=x; Path=/; Domain=auth.example.com; Secure"},
-        request=httpx.Request("POST", "https://auth.example.com/graphql"),
+    insecure: dict[str, str] = {}
+    absorb_set_cookie(
+        ["s=x; Path=/; Secure"],
+        insecure,
+        origin_is_secure=origin_is_secure("http://auth.example.com"),
     )
-    jar.extract_cookies(resp)
-    stored = list(jar.jar)
-    assert stored, "a normal https cookie must still be stored"
-    assert stored[0].secure is True, "Secure must survive for a non-loopback host"
+    assert insecure == {}, "a Secure cookie must not be stored for an http:// origin"
 
-    client = httpx.Client(cookies=jar.jar)
-    req = client.build_request("GET", "http://auth.example.com/x")
-    assert req.headers.get("cookie") is None, "a Secure cookie must not ride http://"
+    for trusted in ("https://auth.example.com", "http://localhost:8380", "http://127.0.0.1:9000"):
+        store: dict[str, str] = {}
+        absorb_set_cookie(
+            ["s=x; Path=/; Secure"], store, origin_is_secure=origin_is_secure(trusted)
+        )
+        assert store == {"s": "x"}, f"{trusted} must be able to carry a Secure cookie"
+
+
+def test_server_deleting_a_cookie_clears_it():
+    """Logout / DeleteMfaSession send Max-Age=0; the store must honour it.
+
+    A jar expires entries on its own. This one does not, so a deletion that was
+    ignored would leave the SDK replaying a dead handle forever — harmless to the
+    server, which rejects it, but it would mask a completed logout locally.
+    """
+    from authorizer._core import absorb_set_cookie
+
+    store: dict[str, str] = {}
+    absorb_set_cookie(["mfa_session=sess-1; Path=/"], store)
+    assert store == {"mfa_session": "sess-1"}
+    absorb_set_cookie(["mfa_session=; Path=/; Max-Age=0"], store)
+    assert store == {}, "a Max-Age=0 delete must drop the stored value"

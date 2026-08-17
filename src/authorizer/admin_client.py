@@ -18,7 +18,9 @@ from ._core import (
     PROTOCOLS,
     ClientConfig,
     RequestSpec,
-    new_cookie_jar,
+    absorb_set_cookie,
+    cookie_header,
+    origin_is_secure,
     parse_graphql_response,
     parse_rest,
     prepare_http,
@@ -56,10 +58,15 @@ class AuthorizerAdminClient:
             admin_secret=admin_secret,
             grpc_endpoint=grpc_endpoint.strip(),
         )
-        self._http = httpx.Client(cookies=new_cookie_jar())
+        self._http = httpx.Client()
         self._channel: Any = None
-        # gRPC has no cookie jar; see _grpc_transport.store_cookies.
-        self._grpc_cookies: dict[str, str] = {}
+        # One cookie store for every transport. The server identifies an
+        # in-progress MFA session (and an admin_login session) only by a
+        # cookie, so it has to survive between calls; see _core for why this
+        # is a plain dict and not an http.cookiejar.
+        self._cookies: dict[str, str] = {}
+        # Whether this client's single origin may carry a Secure cookie.
+        self._origin_secure = origin_is_secure(self._config.authorizer_url)
 
     # -- lifecycle -------------------------------------------------------- #
     def close(self) -> None:
@@ -81,10 +88,33 @@ class AuthorizerAdminClient:
 
     # -- dispatch --------------------------------------------------------- #
     def _send(self, spec: RequestSpec) -> httpx.Response:
+        headers = self._with_cookies(spec.headers)
         try:
-            return self._http.request(spec.method, spec.url, json=spec.json, headers=spec.headers)
-        except httpx.HTTPError as e:
+            res = self._http.request(
+                spec.method, spec.url, json=spec.json, headers=headers
+            )
+        except httpx.HTTPError as e:  # network/transport failure
             raise AuthorizerConnectionError(str(e)) from e
+        self._absorb(res)
+        return res
+
+    def _with_cookies(self, headers: dict[str, str]) -> dict[str, str]:
+        """Attach the stored cookies. Only ever called for this client's own
+        base URL — every RequestSpec is built from config.authorizer_url, so
+        origin scoping is structural rather than a check that could be
+        forgotten. Never attach these to a caller-supplied URL."""
+        out = dict(headers)
+        header = cookie_header(self._cookies)
+        if header:
+            out["Cookie"] = header
+        return out
+
+    def _absorb(self, res: httpx.Response) -> None:
+        absorb_set_cookie(
+            res.headers.get_list("set-cookie"),
+            self._cookies,
+            origin_is_secure=self._origin_secure,
+        )
 
     def _invoke(
         self,
@@ -104,7 +134,7 @@ class AuthorizerAdminClient:
                     self._config.authorizer_url, self._config.grpc_endpoint
                 )
             md = g.grpc_metadata(self._config, headers)
-            return g.grpc_call(self._channel, spec, data, md, self._ADMIN, self._grpc_cookies)
+            return g.grpc_call(self._channel, spec, data, md, self._ADMIN, self._cookies)
         req, kind, unwrap = prepare_http(self._config, spec, data, headers)
         res = self._send(req)
         if kind == "rest":
