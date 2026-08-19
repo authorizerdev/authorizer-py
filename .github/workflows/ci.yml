@@ -44,7 +44,7 @@ jobs:
         run: |
           docker run -d --name authorizer \
             -p 8080:8080 -p 9091:9091 \
-            quay.io/authorizer/authorizer:2.4.0-rc.16 \
+            quay.io/authorizer/authorizer:2.4.0 \
             --database-type=sqlite --database-url=test.db \
             --url=http://localhost:8080 \
             --jwt-type=HS256 --jwt-secret=test \
