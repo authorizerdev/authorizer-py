@@ -487,6 +487,108 @@ def test_fga_read_list_expand(admin: AuthorizerAdminClient, fga_seed: None) -> N
     assert expand is not None
 
 
+_CONDITION_MODEL = (
+    "model\n  schema 1.1\ntype user\ntype document\n  relations\n"
+    "    define reader: [user, user with non_expired_grant]\n"
+    "condition non_expired_grant(current_time: timestamp, grant_time: timestamp, "
+    "grant_duration: duration) {\n  current_time < grant_time + grant_duration\n}\n"
+)
+_SEED_MODEL = (
+    "model\n  schema 1.1\ntype user\ntype document\n  relations\n"
+    "    define reader: [user]\n"
+)
+
+
+def _grant(start: float, duration: str) -> t.FgaCondition:
+    return t.FgaCondition(
+        name="non_expired_grant",
+        context={
+            "grant_time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(start)),
+            "grant_duration": duration,
+        },
+    )
+
+
+def test_fga_conditions(
+    admin: AuthorizerAdminClient, client: AuthorizerClient, protocol: str, fga_seed: None
+) -> None:
+    """Time-limited tuples over every protocol (server 2.4.10+).
+
+    Leaves the store as fga_seed set it up: the seed model is restored and the
+    conditional tuples are deleted, so tests that run later are unaffected.
+    """
+    auth, headers, _ = _signup(client)
+    assert auth.user is not None
+    user = f"user:{auth.user.id}"
+    fresh, stale = f"document:cond-fresh-{protocol}", f"document:cond-stale-{protocol}"
+    admin.fga_write_model(t.FgaWriteModelRequest(dsl=_CONDITION_MODEL))
+    try:
+        now = time.time()
+        admin.fga_write_tuples(
+            t.FgaWriteTuplesRequest(
+                tuples=[
+                    t.FgaTupleInput(
+                        user=user, relation="reader", object=fresh, condition=_grant(now, "10m")
+                    ),
+                    t.FgaTupleInput(
+                        user=user,
+                        relation="reader",
+                        object=stale,
+                        condition=_grant(now - 3600, "10m"),
+                    ),
+                ]
+            )
+        )
+        read = admin.fga_read_tuples(t.FgaReadTuplesRequest(object=fresh))
+        assert len(read.tuples) == 1
+        cond = read.tuples[0].condition
+        assert cond is not None and cond.name == "non_expired_grant"
+        assert cond.context is not None and cond.context.get("grant_duration") == "10m"
+
+        check = client.check_permissions(
+            t.CheckPermissionsRequest(
+                checks=[
+                    t.PermissionCheckInput(relation="reader", object=fresh),
+                    t.PermissionCheckInput(relation="reader", object=stale),
+                ]
+            ),
+            headers=headers,
+        )
+        assert [r.allowed for r in check.results] == [True, False]
+
+        with pytest.raises(AuthorizerError, match="super-admin"):
+            client.check_permissions(
+                t.CheckPermissionsRequest(
+                    checks=[t.PermissionCheckInput(relation="reader", object=stale)],
+                    context={"current_time": "2000-01-01T00:00:00Z"},
+                ),
+                headers=headers,
+            )
+        unbound = t.FgaCondition(
+            name="non_expired_grant", context={"grant_time": "2026-01-01T00:00:00Z"}
+        )
+        with pytest.raises(AuthorizerError, match="missing parameters"):
+            admin.fga_write_tuples(
+                t.FgaWriteTuplesRequest(
+                    tuples=[
+                        t.FgaTupleInput(
+                            user=user, relation="reader", object=fresh + "-x", condition=unbound
+                        )
+                    ]
+                )
+            )
+    finally:
+        admin.fga_delete_tuples(
+            t.FgaWriteTuplesRequest(
+                tuples=[
+                    t.FgaTupleInput(user=user, relation="reader", object=fresh),
+                    t.FgaTupleInput(user=user, relation="reader", object=stale),
+                ]
+            )
+        )
+        admin.fga_write_model(t.FgaWriteModelRequest(dsl=_SEED_MODEL))
+
+
 # --------------------------------------------------------------------------- #
 # Organizations / org SSO / SCIM / org domains / WebAuthn.
 #

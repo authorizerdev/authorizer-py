@@ -86,6 +86,8 @@ with AuthorizerClient(
     print("access_token:", token.access_token)
 ```
 
+> **Note (Authorizer >= v2.4.10):** FGA conditions — `FgaTupleInput.condition` on admin tuple writes, `FgaTuple.condition` on reads, and `CheckPermissionsRequest.context` — need a 2.4.10 or newer server.
+
 > **Note (Authorizer >= v2.4.0):** MFA is on by default, so `login`/`signup` withhold the access token and answer `"Proceed to mfa setup"` with `should_show_totp_screen=True`. Either walk the user through setup (`totp_mfa_setup`, `email_otp_mfa_setup`, …) or skip it. The MFA session is identified by a cookie, so **`skip_mfa_setup` must be called on the same client instance** that did the login/signup:
 >
 > ```python

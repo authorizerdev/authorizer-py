@@ -250,12 +250,35 @@ class RevokeTokenRequest(_Request):
     refresh_token: str
 
 
+@dataclass
+class FgaCondition(_Request):
+    """An OpenFGA condition stored on a tuple (server 2.4.10+).
+
+    ``name`` is a condition declared in the authorization model; ``context``
+    binds its stored parameters, e.g. ``{"grant_time": "2026-11-27T10:00:00Z",
+    "grant_duration": "10m"}``. Store every parameter except ``current_time``,
+    which the server always supplies.
+    """
+
+    name: str
+    context: dict[str, Any] | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> FgaCondition:
+        ctx = data.get("context")
+        return cls(name=data.get("name", ""), context=ctx if isinstance(ctx, dict) else None)
+
+
 # NOTE: `object` shadows the Python builtin intentionally to match the Authorizer API field name.
 @dataclass
 class FgaTupleInput(_Request):
     user: str
     relation: str
     object: str
+    # Makes a written tuple conditional (e.g. a time-limited grant). Accepted
+    # only by fga_write_tuples; the server rejects it on deletes and on
+    # contextual tuples.
+    condition: FgaCondition | None = None
 
 
 @dataclass
@@ -269,6 +292,10 @@ class PermissionCheckInput(_Request):
 class CheckPermissionsRequest(_Request):
     checks: list[PermissionCheckInput]
     user: str | None = None
+    # Request-time condition parameters (server 2.4.10+). Accepted
+    # only from a super-admin not using a delegated token, and never with
+    # current_time; any other caller is rejected.
+    context: dict[str, Any] | None = None
 
 
 @dataclass
@@ -1367,10 +1394,15 @@ class FgaTuple:
     user: str = ""
     relation: str = ""
     object: str = ""
+    # Set when the tuple is conditional; None for a plain tuple.
+    condition: FgaCondition | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> FgaTuple:
-        return cls(**_known(cls, data))
+        known = _known(cls, data)
+        cond = known.pop("condition", None)
+        condition = FgaCondition.from_dict(cond) if isinstance(cond, dict) else None
+        return cls(**known, condition=condition)
 
 
 @dataclass
