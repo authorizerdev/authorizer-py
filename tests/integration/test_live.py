@@ -512,7 +512,7 @@ def _grant(start: float, duration: str) -> t.FgaCondition:
 def test_fga_conditions(
     admin: AuthorizerAdminClient, client: AuthorizerClient, protocol: str, fga_seed: None
 ) -> None:
-    """Time-limited tuples over every protocol (server newer than 2.4.9).
+    """Time-limited tuples over every protocol (server 2.4.10+).
 
     Leaves the store as fga_seed set it up: the seed model is restored and the
     conditional tuples are deleted, so tests that run later are unaffected.

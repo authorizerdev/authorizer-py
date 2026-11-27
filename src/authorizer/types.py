@@ -252,7 +252,7 @@ class RevokeTokenRequest(_Request):
 
 @dataclass
 class FgaCondition(_Request):
-    """An OpenFGA condition stored on a tuple (server newer than 2.4.9).
+    """An OpenFGA condition stored on a tuple (server 2.4.10+).
 
     ``name`` is a condition declared in the authorization model; ``context``
     binds its stored parameters, e.g. ``{"grant_time": "2026-11-27T10:00:00Z",
@@ -292,7 +292,7 @@ class PermissionCheckInput(_Request):
 class CheckPermissionsRequest(_Request):
     checks: list[PermissionCheckInput]
     user: str | None = None
-    # Request-time condition parameters (server newer than 2.4.9). Accepted
+    # Request-time condition parameters (server 2.4.10+). Accepted
     # only from a super-admin not using a delegated token, and never with
     # current_time; any other caller is rejected.
     context: dict[str, Any] | None = None
