@@ -7,7 +7,10 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Python 3.9 is not published for the Ubuntu 26.04 runner image that
+    # ubuntu-latest now resolves to, so that one entry stays on 24.04 (the
+    # package still declares requires-python >= 3.9).
+    runs-on: ${{ matrix.python-version == '3.9' && 'ubuntu-24.04' || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
