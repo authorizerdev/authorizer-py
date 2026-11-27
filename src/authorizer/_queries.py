@@ -298,7 +298,7 @@ ADMIN_FGA_DELETE_TUPLES = (
 ADMIN_FGA_READ_TUPLES = (
     "query adminFgaReadTuples($data: FgaReadTuplesInput!) "
     "{ _fga_read_tuples(params: $data) "
-    "{ tuples { user relation object } continuation_token } }"
+    "{ tuples { user relation object condition { name context } } continuation_token } }"
 )
 ADMIN_FGA_LIST_USERS = (
     "query adminFgaListUsers($data: FgaListUsersInput!) "
